@@ -3,8 +3,9 @@
 namespace CirrusSearch\Search;
 
 use CirrusSearch\Connection;
+use CirrusSearch\Util;
+use Elastica\Index;
 use Elastica\Query;
-use Elastica\Type;
 use MediaWiki\Logger\LoggerFactory;
 
 /**
@@ -20,19 +21,19 @@ class SearchRequestBuilder {
 	/** @var string */
 	private $indexBaseName;
 
-	/** @var  int */
+	/** @var int */
 	private $offset = 0;
 
-	/** @var  int */
+	/** @var int */
 	private $limit = 20;
 
 	/** @var string search timeout, string with time and unit, e.g. 20s for 20 seconds */
 	private $timeout;
 
-	/** @var Type|null Force the type when set, use {@link Connection::pickIndexTypeForNamespaces}
-	 * otherwise
+	/**
+	 * @var Index|null force the index when set, use {@link Connection::pickIndexSuffixForNamespaces}
 	 */
-	private $pageType;
+	private $index;
 
 	/** @var string set the sort option, controls the use of rescore functions or elastic sort */
 	private $sort = 'relevance';
@@ -129,10 +130,13 @@ class SearchRequestBuilder {
 				$query->setSort( [ '_doc' ] );
 				break;
 			case 'random':
-				if ( $this->offset !== 0 ) {
+				$randomSeed = $this->searchContext->getSearchQuery()->getRandomSeed();
+				if ( $randomSeed === null && $this->offset !== 0 ) {
 					$this->searchContext->addWarning( 'cirrussearch-offset-not-allowed-with-random-sort' );
 					$this->offset = 0;
 				}
+				// Can't use an empty array, it would JSONify to [] instead of {}.
+				$scoreParams = ( $randomSeed === null ) ? (object)[] : [ 'seed' => $randomSeed, 'field' => '_seq_no' ];
 				// Instead of setting a sort field wrap the whole query in a
 				// bool filter and add a must clause for the random score. This
 				// could alternatively be a rescore over a limited document
@@ -142,9 +146,21 @@ class SearchRequestBuilder {
 					->addFilter( $mainQuery )
 					->addMust( ( new Query\FunctionScore() )
 						->setQuery( new Query\MatchAll() )
-						/** @phan-suppress-next-line PhanTypeMismatchArgument empty array isn't jsonified to {} properly */
-						->addFunction( 'random_score', (object)[] ) ) );
+						->addFunction( 'random_score', $scoreParams ) ) );
+
 				break;
+			case 'user_random':
+				// Randomly ordered, but consistent for a single user
+				$query->setQuery( ( new Query\BoolQuery() )
+					->addFilter( $mainQuery )
+					->addMust( ( new Query\FunctionScore() )
+						->setQuery( new Query\MatchAll() )
+						->addFunction( 'random_score', [
+							'seed' => Util::generateIdentToken(),
+							'field' => '_seq_no',
+						] ) ) );
+				break;
+
 			default:
 				// Same as just_match. No user warning since an invalid sort
 				// getting this far as a bug in the calling code which should
@@ -172,9 +188,7 @@ class SearchRequestBuilder {
 			$queryOptions[\Elastica\Search::OPTION_SEARCH_TYPE] = \Elastica\Search::OPTION_SEARCH_TYPE_DFS_QUERY_THEN_FETCH;
 		}
 
-		$pageType = $this->getPageType();
-
-		$search = $pageType->createSearch( $query, $queryOptions );
+		$search = $this->getIndex()->createSearch( $query, $queryOptions );
 		$crossClusterName = $this->connection->getConfig()->getClusterAssignment()->getCrossClusterName();
 		foreach ( $extraIndexes as $i ) {
 			$search->addIndex( $i->getSearchIndex( $crossClusterName ) );
@@ -236,17 +250,17 @@ class SearchRequestBuilder {
 	}
 
 	/**
-	 * @return Type An elastica type suitable for searching against
+	 * @return \Elastica\Index An elastica type suitable for searching against
 	 *  the configured wiki over the host wiki's default connection.
 	 */
-	public function getPageType() {
-		if ( $this->pageType ) {
-			return $this->pageType;
+	public function getIndex(): \Elastica\Index {
+		if ( $this->index ) {
+			return $this->index;
 		} else {
 			$indexBaseName = $this->indexBaseName;
 			$config = $this->searchContext->getConfig();
 			$hostConfig = $config->getHostWikiConfig();
-			$indexType = $this->connection->pickIndexTypeForNamespaces(
+			$indexSuffix = $this->connection->pickIndexSuffixForNamespaces(
 				$this->searchContext->getNamespaces() );
 			if ( $hostConfig->get( 'CirrusSearchCrossClusterSearch' ) ) {
 				$local = $hostConfig->getClusterAssignment()->getCrossClusterName();
@@ -255,20 +269,16 @@ class SearchRequestBuilder {
 					$indexBaseName = $current . ':' . $indexBaseName;
 				}
 			}
-			return $this->connection->getPageType( $indexBaseName, $indexType );
+			return $this->connection->getIndex( $indexBaseName, $indexSuffix );
 		}
 	}
 
 	/**
-	 * Override the index/type used for search. When this is used automatic
-	 * handling of cross-cluster search is disabled.
-	 *
-	 * @param Type|null $pageType
-	 * @return SearchRequestBuilder
+	 * @param ?Index $index
+	 * @return $this
 	 */
-	public function setPageType( $pageType ) {
-		$this->pageType = $pageType;
-
+	public function setIndex( ?Index $index ): self {
+		$this->index = $index;
 		return $this;
 	}
 

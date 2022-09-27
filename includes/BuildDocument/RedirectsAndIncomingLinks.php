@@ -9,6 +9,7 @@ use CirrusSearch\Search\CirrusIndexField;
 use CirrusSearch\SearchConfig;
 use CirrusSearch\SearchRequestLog;
 use Elastica\Document;
+use Elastica\Multi\ResultSet;
 use Elastica\Multi\Search as MultiSearch;
 use Elastica\Query\BoolQuery;
 use Elastica\Query\Terms;
@@ -59,7 +60,12 @@ class RedirectsAndIncomingLinks extends ElasticsearchIntermediary implements Pag
 	 */
 	private $pageIds = [];
 
-	public function __construct( Connection $conn ) {
+	/**
+	 * @param Connection $conn
+	 */
+	public function __construct(
+		Connection $conn
+	) {
 		parent::__construct( $conn, null, 0 );
 		$this->config = $conn->getConfig();
 		$this->linkCountMultiSearch = new MultiSearch( $this->connection->getClient() );
@@ -105,7 +111,7 @@ class RedirectsAndIncomingLinks extends ElasticsearchIntermediary implements Pag
 		// #2 and #3 we count the number of links to the page with Elasticsearch.
 		// Since we only have $wgCirrusSearchIndexedRedirects we only count that many terms.
 		$this->linkCountMultiSearch->addSearch( $this->buildCount( $outgoingLinksToCount ) );
-		$this->linkCountClosures[] = function ( $count ) use( $doc, $redirectCount ) {
+		$this->linkCountClosures[] = static function ( $count ) use( $doc, $redirectCount ) {
 			$doc->set( 'incoming_links', $count + $redirectCount );
 			CirrusIndexField::addNoopHandler( $doc, 'incoming_links', 'within 20%' );
 		};
@@ -159,6 +165,10 @@ class RedirectsAndIncomingLinks extends ElasticsearchIntermediary implements Pag
 		// NOOP
 	}
 
+	/**
+	 * @param ResultSet $result
+	 * @return never
+	 */
 	private function raiseLinkCountException( $result ): void {
 		$linkCountClosureCount = count( $this->linkCountClosures );
 		// Seems to happen during connection issues? Treat it the
@@ -192,10 +202,9 @@ class RedirectsAndIncomingLinks extends ElasticsearchIntermediary implements Pag
 		$bool->addFilter( new Terms( 'outgoing_link', $titles ) );
 
 		$indexPrefix = $this->config->get( SearchConfig::INDEX_BASE_NAME );
-		$type = $this->connection->getPageType( $indexPrefix );
-		$search = new Search( $type->getIndex()->getClient() );
-		$search->addIndex( $type->getIndex() );
-		$search->addType( $type );
+		$index = $this->connection->getIndex( $indexPrefix );
+		$search = new Search( $index->getClient() );
+		$search->addIndex( $index );
 		$search->setQuery( $bool );
 		$search->getQuery()->addParam( 'stats', 'link_count' );
 		$search->getQuery()->setSize( 0 );

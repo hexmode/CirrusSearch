@@ -279,6 +279,12 @@ Then( /^this error is reported by api: (.+)$/, function ( expected_error ) {
 	} );
 } );
 
+Then( /^this warning is reported by api: (.+)$/, function ( expected_error ) {
+	return withApi( this, () => {
+		expect( this.apiResponse.warnings.search.warnings ).to.equal( expected_error.trim() );
+	} );
+} );
+
 Then( /^there are no did you mean suggestions from the api$/, function () {
 	// TODO: This is actually a *did you mean* suggestion
 	return withApi( this, () => {
@@ -341,21 +347,6 @@ Then( /^I delete (.+)( without waiting)?$/, function ( title, withoutWaiting ) {
 		skipWaitForOperation: Boolean( withoutWaiting )
 	} );
 } );
-
-Then( /^I globally freeze indexing$/, Promise.coroutine( function* () {
-	const client = yield this.onWiki();
-	yield client.request( {
-		action: 'cirrus-freeze-writes'
-	} );
-} ) );
-
-Then( /^I globally thaw indexing$/, Promise.coroutine( function* () {
-	const client = yield this.onWiki();
-	yield client.request( {
-		action: 'cirrus-freeze-writes',
-		thaw: true
-	} );
-} ) );
 
 Then( /^a file named (.+) exists( on commons)? with contents (.+) and description (.+)$/, function ( title, on_commons, fileName, description ) {
 	let stepHelpers = this.stepHelpers;
@@ -517,12 +508,13 @@ Then( /^A valid mapping dump is produced$/, function () {
 	return withApi( this, () => {
 		expect( this.apiError ).to.equal( undefined );
 		expect( this.apiResponse ).to.include.all.keys( 'content', 'general', 'archive' );
-		expect( this.apiResponse.content ).to.have.all.keys( 'page' );
-		expect( this.apiResponse.general ).to.have.all.keys( 'page' );
-		expect( this.apiResponse.archive ).to.have.all.keys( 'archive' );
-		expect( this.apiResponse.content.page ).to.have.all.keys(
+		expect( this.apiResponse.content ).to.have.all.keys(
 			'dynamic', 'properties' );
-		expect( this.apiResponse.content.page.properties ).to.include.keys(
+		expect( this.apiResponse.general ).to.have.all.keys(
+			'dynamic', 'properties' );
+		expect( this.apiResponse.archive ).to.have.all.keys(
+			'dynamic', 'properties' );
+		expect( this.apiResponse.content.properties ).to.include.keys(
 			'all', 'all_near_match', 'title', 'category', 'redirect' );
 	} );
 } );

@@ -9,8 +9,9 @@ use CirrusSearch\Dispatch\SearchQueryDispatchService;
 use CirrusSearch\Dispatch\SearchQueryRoute;
 use CirrusSearch\Search\SearchQuery;
 use Config;
+use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserOptionsLookup;
 use RequestContext;
-use User;
 use WebRequest;
 use Wikimedia\Assert\Assert;
 
@@ -51,73 +52,73 @@ class SearchProfileService {
 	/**
 	 * Profile type for ordering crossproject result blocks
 	 */
-	const CROSS_PROJECT_BLOCK_SCORER = 'crossproject_block_scorer';
+	public const CROSS_PROJECT_BLOCK_SCORER = 'crossproject_block_scorer';
 
 	/**
 	 * Profile type for similarity configuration
 	 * Used when building the indices
 	 */
-	const SIMILARITY = 'similarity';
+	public const SIMILARITY = 'similarity';
 
 	/**
 	 * Profile type for rescoring components
 	 * Used at query when building elastic queries
 	 * @see \CirrusSearch\Search\Rescore\RescoreBuilder
 	 */
-	const RESCORE = 'rescore';
+	public const RESCORE = 'rescore';
 
 	/**
 	 * Profile type used to build function chains
 	 * Used at query time by rescore builders
 	 * @see \CirrusSearch\Search\Rescore\RescoreBuilder
 	 */
-	const RESCORE_FUNCTION_CHAINS = 'rescore_function_chains';
+	public const RESCORE_FUNCTION_CHAINS = 'rescore_function_chains';
 
 	/**
 	 * Profile type used by the completion suggester
 	 * @see \CirrusSearch\CompletionSuggester
 	 */
-	const COMPLETION = 'completion';
+	public const COMPLETION = 'completion';
 
 	/**
 	 * Profile type used by the phrase suggester (fulltext search only)
 	 * @see \CirrusSearch\Fallbacks\PhraseSuggestFallbackMethod
 	 */
-	const PHRASE_SUGGESTER = 'phrase_suggester';
+	public const PHRASE_SUGGESTER = 'phrase_suggester';
 
 	/**
 	 * Profile type used by the index lookup fallback method method
 	 * @see \CirrusSearch\Fallbacks\IndexLookupFallbackMethod
 	 */
-	const INDEX_LOOKUP_FALLBACK = 'index_lookup_fallback';
+	public const INDEX_LOOKUP_FALLBACK = 'index_lookup_fallback';
 
 	/**
 	 * Profile type used by saneitizer
 	 * @see \CirrusSearch\Maintenance\SaneitizeJobs
 	 */
-	const SANEITIZER = 'saneitizer';
+	public const SANEITIZER = 'saneitizer';
 
 	/**
 	 * Profiles used for building fulltext search queries
 	 * @see \CirrusSearch\Search\SearchContext::getFulltextQueryBuilderProfile()
 	 */
-	const FT_QUERY_BUILDER = 'ft_query_builder';
+	public const FT_QUERY_BUILDER = 'ft_query_builder';
 
 	/**
 	 * Profile type used by FallbackRunner.
 	 * @see \CirrusSearch\Fallbacks\FallbackRunner::create()
 	 */
-	const FALLBACKS = 'fallbacks';
+	public const FALLBACKS = 'fallbacks';
 
 	/**
 	 * Profile context used for prefix search queries
 	 */
-	const CONTEXT_PREFIXSEARCH = 'prefixsearch';
+	public const CONTEXT_PREFIXSEARCH = 'prefixsearch';
 
 	/**
 	 * Default profile context (used by fulltext queries)
 	 */
-	const CONTEXT_DEFAULT = 'default';
+	public const CONTEXT_DEFAULT = 'default';
 
 	/**
 	 * List of profile repositories, grouped by type and then by repository name.
@@ -140,7 +141,7 @@ class SearchProfileService {
 	private $overriders = [];
 
 	/**
-	 * @var User
+	 * @var UserIdentity
 	 */
 	private $user;
 
@@ -150,7 +151,7 @@ class SearchProfileService {
 	private $request;
 
 	/**
-	 * @var boolean
+	 * @var bool
 	 */
 	private $frozen;
 
@@ -165,11 +166,21 @@ class SearchProfileService {
 	private $routes;
 
 	/**
-	 * SearchProfileService constructor.
-	 * @param WebRequest|null $request obtained from \RequestContext::getMain()->getRequest() if null
-	 * @param User|null $user obtained from \RequestContext::getMain()->getUser() if null
+	 * @var UserOptionsLookup
 	 */
-	public function __construct( WebRequest $request = null, User $user = null ) {
+	private $userOptionsLookup;
+
+	/**
+	 * @param UserOptionsLookup $userOptionsLookup
+	 * @param WebRequest|null $request obtained from \RequestContext::getMain()->getRequest() if null
+	 * @param UserIdentity|null $user obtained from \RequestContext::getMain()->getUser() if null
+	 */
+	public function __construct(
+		UserOptionsLookup $userOptionsLookup,
+		WebRequest $request = null,
+		UserIdentity $user = null
+	) {
+		$this->userOptionsLookup = $userOptionsLookup;
 		$this->request = $request ?? RequestContext::getMain()->getRequest();
 		$this->user = $user ?? RequestContext::getMain()->getUser();
 		$this->routes = [
@@ -405,7 +416,10 @@ class SearchProfileService {
 	 * @param string $userPref the name of the key used to store this user preference
 	 */
 	public function registerUserPrefOverride( $type, $profileContext, $userPref ) {
-		$this->registerProfileOverride( $type, $profileContext, new UserPrefSearchProfileOverride( $this->user, $userPref ) );
+		$this->registerProfileOverride(
+			$type,
+			$profileContext,
+			new UserPrefSearchProfileOverride( $this->user, $this->userOptionsLookup, $userPref ) );
 	}
 
 	/**
@@ -489,7 +503,6 @@ class SearchProfileService {
 	}
 
 	/**
-	 * List profile types
 	 * @return string[]
 	 */
 	public function listProfileTypes() {

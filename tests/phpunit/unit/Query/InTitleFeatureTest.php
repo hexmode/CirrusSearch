@@ -47,10 +47,11 @@ class InTitleFeatureTest extends CirrusTestCase {
 				'this~that ',
 				'intitle:this~that',
 			],
-			'maintains provided quotes' => [
-				[ 'query_string' => $defaults + [
+			'maintains provided quotes and limits to plain' => [
+				[ 'query_string' => [
 					'query' => '"something or other"',
-				] ],
+					'fields' => [ 'title.plain', 'redirect.title.plain' ],
+				] + $defaults ],
 				'"something or other" ',
 				'intitle:"something or other"',
 			],
@@ -88,10 +89,6 @@ class InTitleFeatureTest extends CirrusTestCase {
 
 	/**
 	 * @dataProvider provideRegexQueries
-	 * @param $query
-	 * @param $expectedRemaining
-	 * @param $negated
-	 * @param $filterValue
 	 */
 	public function testRegex( $query, $expectedRemaining, $negated, $filterValue, $insensitive ) {
 		$filterCallback = null;
@@ -193,6 +190,13 @@ class InTitleFeatureTest extends CirrusTestCase {
 				'foo\\/bar',
 				true,
 			],
+			'if the last character of the pattern searched is "/"' => [
+				'intitle:/\/Documentation\//',
+				'',
+				false,
+				'\/Documentation\/',
+				false,
+			],
 		];
 	}
 
@@ -212,4 +216,5 @@ class InTitleFeatureTest extends CirrusTestCase {
 			],
 			[ [ 'cirrussearch-feature-not-available', 'intitle regex' ] ] );
 	}
+
 }

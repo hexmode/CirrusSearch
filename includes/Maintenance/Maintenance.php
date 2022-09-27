@@ -5,8 +5,9 @@ namespace CirrusSearch\Maintenance;
 use CirrusSearch\Connection;
 use CirrusSearch\MetaStore\MetaStoreIndex;
 use CirrusSearch\SearchConfig;
-use CirrusSearch\UserTesting;
+use CirrusSearch\UserTestingEngine;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Settings\SettingsBuilder;
 
 // Maintenance class is loaded before autoload, so we need to pull the interface
 require_once __DIR__ . '/Printer.php';
@@ -51,10 +52,12 @@ abstract class Maintenance extends \Maintenance implements Printer {
 			false, true );
 		$this->addOption( 'userTestTrigger', 'Use config var and profiles set in the user testing ' .
 			'framework, e.g. --userTestTrigger=trigger', false, true );
+		$this->requireExtension( 'CirrusSearch' );
 	}
 
-	public function finalSetup() {
-		parent::finalSetup();
+	public function finalSetup( SettingsBuilder $settingsBuilder = null ) {
+		parent::finalSetup( $settingsBuilder );
+
 		if ( $this->hasOption( 'userTestTrigger' ) ) {
 			$this->setupUserTest();
 		}
@@ -73,10 +76,12 @@ abstract class Maintenance extends \Maintenance implements Printer {
 		// alternate value would testing on the same cluster
 		// but this index would not receive updates.
 		$trigger = $this->getOption( 'userTestTrigger' );
-		$ut = UserTesting::getInstance( null, $trigger );
-		if ( !$ut->getActiveTestNames() ) {
+		$engine = UserTestingEngine::fromConfig( $this->getConfig() );
+		$status = $engine->decideTestByTrigger( $trigger );
+		if ( !$status->isActive() ) {
 			$this->fatalError( "Unknown user test trigger: $trigger" );
 		}
+		$engine->activateTest( $status );
 	}
 
 	/**
@@ -126,6 +131,10 @@ abstract class Maintenance extends \Maintenance implements Printer {
 				->makeConfig( 'CirrusSearch' );
 		}
 		return $this->searchConfig;
+	}
+
+	public function getMetaStore( Connection $conn = null ) {
+		return new MetaStoreIndex( $conn ?? $this->getConnection(), $this, $this->getSearchConfig() );
 	}
 
 	/**
@@ -218,4 +227,41 @@ abstract class Maintenance extends \Maintenance implements Printer {
 		$metastore->createIfNecessary();
 		return $metastore;
 	}
+
+	protected function requireCirrusReady() {
+		// If the version does not exist it's certainly because nothing has been indexed.
+		if ( !$this->getMetaStore()->cirrusReady() ) {
+			throw new \Exception(
+				"Cirrus meta store does not exist, you must index your data first"
+			);
+		}
+	}
+
+	/**
+	 * Provides support for backward compatible CLI options
+	 *
+	 * Requires either one or neither of the two options to be provided.
+	 *
+	 * @param string $current The current option to request
+	 * @param string $bc The old option to provide BC support for
+	 * @param bool $required True if the option must be provided. When false and no option
+	 *  is provided null is returned.
+	 * @return mixed
+	 */
+	protected function getBackCompatOption( string $current, string $bc, bool $required = true ) {
+		if ( $this->hasOption( $current ) && $this->hasOption( $bc ) ) {
+			$this->error( "\nERROR: --$current cannot be provided with --$bc" );
+			$this->maybeHelp( true );
+		} elseif ( $this->hasOption( $current ) ) {
+			return $this->getOption( $current );
+		} elseif ( $this->hasOption( $bc ) ) {
+			return $this->getOption( $bc );
+		} elseif ( $required ) {
+			$this->error( "\nERROR: Param $current is required" );
+			$this->maybeHelp( true );
+		} else {
+			return null;
+		}
+	}
+
 }

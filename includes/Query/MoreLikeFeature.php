@@ -16,7 +16,7 @@ use Title;
 class MoreLikeFeature extends SimpleKeywordFeature implements LegacyKeywordFeature {
 	use MoreLikeTrait;
 
-	const MORE_LIKE_THIS = 'morelike';
+	private const MORE_LIKE_THIS = 'morelike';
 
 	/**
 	 * @var SearchConfig
@@ -73,14 +73,14 @@ class MoreLikeFeature extends SimpleKeywordFeature implements LegacyKeywordFeatu
 	 * @param string $value
 	 * @param string $quotedValue
 	 * @param bool $negated
-	 * @return array|void
+	 * @return array
 	 */
 	protected function doApply( SearchContext $context, $key, $value, $quotedValue, $negated ) {
 		$context->setCacheTtl( $this->config->get( 'CirrusSearchMoreLikeThisTTL' ) );
 		$titles = $this->doExpand( $key, $value, $context );
 		if ( $titles === [] ) {
 			$context->setResultsPossible( false );
-			return;
+			return [ null, false ];
 		}
 		$query = $this->buildMoreLikeQuery( $titles );
 

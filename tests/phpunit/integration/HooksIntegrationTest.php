@@ -4,6 +4,8 @@ namespace CirrusSearch;
 
 use CirrusSearch\Profile\SearchProfileService;
 use CirrusSearch\Profile\SearchProfileServiceFactory;
+use ConfigFactory;
+use User;
 
 /**
  * Make sure cirrus doens't break any hooks.
@@ -204,11 +206,6 @@ class HooksIntegrationTest extends CirrusIntegrationTestCase {
 	 * @covers \CirrusSearch\Hooks::overrideSecret
 	 * @covers \CirrusSearch\Hooks::overrideNumeric
 	 * @covers \CirrusSearch\Hooks::overrideSecret
-	 * @param string $option
-	 * @param mixed $originalValue
-	 * @param string $paramName
-	 * @param string $paramValue
-	 * @param mixed $expectedValue
 	 * @throws \MWException
 	 */
 	public function testOverrides( $option, $originalValue, $paramName, $paramValue, $expectedValue,
@@ -361,20 +358,24 @@ class HooksIntegrationTest extends CirrusIntegrationTestCase {
 		$this->setMwGlobals( [
 			'wgCirrusSearchUseCompletionSuggester' => true,
 		] );
-		$service = new SearchProfileService();
+		$service = new SearchProfileService( $this->getServiceContainer()->getUserOptionsLookup() );
 		$service->registerDefaultProfile( SearchProfileService::COMPLETION,
 			SearchProfileService::CONTEXT_DEFAULT, 'fuzzy' );
 		$service->registerArrayRepository( SearchProfileService::COMPLETION, 'phpunit', $profiles );
 		$factory = $this->getMockBuilder( SearchProfileServiceFactory::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$factory->expects( $this->any() )
-			->method( 'loadService' )
-			->will( $this->returnValue( $service ) );
+		$factory->method( 'loadService' )
+			->willReturn( $service );
 		$this->setService( SearchProfileServiceFactory::SERVICE_NAME, $factory );
 
 		$prefs = [];
-		Hooks::onGetPreferences( new \User(), $prefs );
+		$hooks = new Hooks(
+			$this->getMockBuilder( ConfigFactory::class )
+				->disableOriginalConstructor()
+				->getMock()
+		);
+		$hooks->onGetPreferences( new User(), $prefs );
 		return $prefs;
 	}
 

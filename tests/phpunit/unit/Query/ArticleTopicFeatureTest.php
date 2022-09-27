@@ -2,6 +2,7 @@
 
 namespace CirrusSearch\Query;
 
+use CirrusSearch\CirrusSearchHookRunner;
 use CirrusSearch\CirrusTestCase;
 use CirrusSearch\HashSearchConfig;
 use CirrusSearch\Search\SearchContext;
@@ -20,20 +21,22 @@ class ArticleTopicFeatureTest extends CirrusTestCase {
 	}
 
 	public function parseProvider() {
-		$term = function ( string $topic ) {
+		$term = static function ( string $topic, string $prefix ) {
 			return [
-				'term' => [
-					'ores_articletopics' => [
-						'value' => $topic,
-						'boost' => 1.0,
+				[
+					'term' => [
+						'weighted_tags' => [
+							'value' => "classification.ores.$prefix/$topic",
+							'boost' => 1.0,
+						],
 					],
 				],
 			];
 		};
-		$match = function ( array $query ) {
+		$match = static function ( array $query ) {
 			return [ 'bool' => [ 'must' => [ $query ] ] ];
 		};
-		$filter = function ( array $query ) {
+		$filter = static function ( array $query ) {
 			return [ 'bool' => [
 				'must' => [ [ 'match_all' => [] ] ],
 				'filter' => [ [ 'bool' => [ 'must_not' => [ $query ] ] ] ],
@@ -43,31 +46,52 @@ class ArticleTopicFeatureTest extends CirrusTestCase {
 		return [
 			'basic search' => [
 				'articletopic:stem',
-				[ 'topics' => [ 'STEM.STEM*' ] ],
+				[
+					'topics' => [ 'STEM.STEM*' ],
+					'tag_prefix' => 'classification.ores.articletopic',
+				],
 				$match( [
 					'dis_max' => [
-						'queries' => [ $term( 'STEM.STEM*' ) ],
+						'queries' => $term( 'STEM.STEM*', 'articletopic' ),
+					],
+				] ),
+			],
+			'basic search with drafttopic' => [
+				'drafttopic:stem',
+				[
+					'topics' => [ 'STEM.STEM*' ],
+					'tag_prefix' => 'classification.ores.drafttopic',
+				],
+				$match( [
+					'dis_max' => [
+						'queries' => $term( 'STEM.STEM*', 'drafttopic' ),
 					],
 				] ),
 			],
 			'negated' => [
 				'-articletopic:stem',
-				[ 'topics' => [ 'STEM.STEM*' ] ],
+				[
+					'topics' => [ 'STEM.STEM*' ],
+					'tag_prefix' => 'classification.ores.articletopic',
+				],
 				$filter( [
 					'dis_max' => [
-						'queries' => [ $term( 'STEM.STEM*' ) ],
+						'queries' => $term( 'STEM.STEM*', 'articletopic' ),
 					],
 				] ),
 			],
 			'multiple topics' => [
 				'articletopic:media|music',
-				[ 'topics' => [ 'Culture.Media.Media*', 'Culture.Media.Music' ] ],
+				[
+					'topics' => [ 'Culture.Media.Media*', 'Culture.Media.Music' ],
+					'tag_prefix' => 'classification.ores.articletopic',
+				],
 				$match( [
 					'dis_max' => [
-						'queries' => [
-							$term( 'Culture.Media.Media*' ),
-							$term( 'Culture.Media.Music' ),
-						],
+						'queries' => array_merge(
+							$term( 'Culture.Media.Media*', 'articletopic' ),
+							$term( 'Culture.Media.Music', 'articletopic' )
+						),
 					],
 				] ),
 			],
@@ -79,7 +103,9 @@ class ArticleTopicFeatureTest extends CirrusTestCase {
 	 */
 	public function testParse( string $term, array $expectedParsedValue, array $expectedQuery ) {
 		$config = new HashSearchConfig( [] );
-		$context = new SearchContext( $config );
+		$context = new SearchContext(
+			$config, null, null, null, null, $this->createMock( CirrusSearchHookRunner::class )
+		);
 		$feature = new ArticleTopicFeature();
 
 		$this->assertParsedValue( $feature, $term, $expectedParsedValue );
@@ -87,7 +113,7 @@ class ArticleTopicFeatureTest extends CirrusTestCase {
 		$feature->apply( $context, $term );
 		$actualQuery = $context->getQuery()->toArray();
 		// MatchAll is converted to an stdClass instead of an array
-		array_walk_recursive( $actualQuery, function ( &$node ) {
+		array_walk_recursive( $actualQuery, static function ( &$node ) {
 			if ( $node instanceof \stdClass ) {
 				$node = [];
 			}
@@ -95,11 +121,21 @@ class ArticleTopicFeatureTest extends CirrusTestCase {
 		$this->assertSame( $expectedQuery, $actualQuery );
 	}
 
-	public function testParse_invalid() {
+	public function provide_testParse_invalid() {
+		return [
+			'With articletopic' => [ 'articletopic' ],
+			'With drafttopic' => [ 'drafttopic' ]
+		];
+	}
+
+	/**
+	 * @dataProvider provide_testParse_invalid
+	 */
+	public function testParse_invalid( string $keyword ) {
 		$feature = new ArticleTopicFeature();
 		$this->assertWarnings( $feature, [ [ 'cirrussearch-articletopic-invalid-topic',
-			[ 'list' => [ 'foo' ], 'type' => 'comma' ], 1 ] ], 'articletopic:foo' );
-		$this->assertNoResultsPossible( $feature, 'articletopic:foo' );
+											 [ 'list' => [ 'foo' ], 'type' => 'comma' ], 1 ] ], "$keyword:foo" );
+		$this->assertNoResultsPossible( $feature, "$keyword:foo" );
 	}
 
 }

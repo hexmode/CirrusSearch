@@ -3,6 +3,7 @@
 namespace CirrusSearch\Search;
 
 use CirrusSearch\CirrusTestCase;
+use ReflectionNamedType;
 
 /**
  * @covers \CirrusSearch\Search\TeamDraftInterleaver::interleaveResults
@@ -49,7 +50,7 @@ class TeamDraftInterleaverTest extends CirrusTestCase {
 		$csrs = new \ReflectionClass( CirrusSearchResultSet::class );
 		$interleavedRsetMethods = $interleavedRset->getMethods( \ReflectionMethod::IS_PUBLIC );
 		$csrsmethods = array_map(
-			function ( \ReflectionMethod $method ) {
+			static function ( \ReflectionMethod $method ) {
 				return $method->getName();
 			},
 			$csrs->getMethods( \ReflectionMethod::IS_PUBLIC ) );
@@ -61,7 +62,7 @@ class TeamDraftInterleaverTest extends CirrusTestCase {
 		);
 		$interleavedRsetMethods = array_filter(
 			$interleavedRsetMethods,
-			function ( \ReflectionMethod $method ) use ( $delegatedMethods ) {
+			static function ( \ReflectionMethod $method ) use ( $delegatedMethods ) {
 				return in_array(
 					$method->getName(),
 					$delegatedMethods
@@ -96,10 +97,10 @@ class TeamDraftInterleaverTest extends CirrusTestCase {
 							$params[] = [ $paramId ];
 							break;
 						default:
-							if ( !$param->getClass() ) {
+							if ( !( $param->getType() instanceof ReflectionNamedType ) ) {
 								$this->fail( "Invalid param type " . $param->getName() );
 							}
-							$params[] = $this->getMockBuilder( $param->getClass()->getName() )
+							$params[] = $this->getMockBuilder( $param->getType()->getName() )
 								->disableOriginalConstructor()
 								->getMock();
 					}

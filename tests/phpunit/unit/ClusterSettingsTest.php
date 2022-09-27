@@ -26,20 +26,25 @@ class ClusterSettingsTest extends CirrusTestCase {
 		];
 	}
 
+	public function testReturnsProvidedClusterName() {
+		$cluster = 'some-name';
+		$settings = new ClusterSettings( new HashSearchConfig( [] ), $cluster );
+		$this->assertEquals( $cluster, $settings->getName() );
+	}
+
 	/**
 	 * @dataProvider provideShardCount
 	 */
-	public function testShardCount( $shardCounts, $cluster, $indexType, $expect ) {
+	public function testShardCount( $shardCounts, $cluster, $indexSuffix, $expect ) {
 		$config = $this->getMockBuilder( SearchConfig::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$config->expects( $this->any() )
-			->method( 'get' )
+		$config->method( 'get' )
 			->with( 'CirrusSearchShardCount' )
-			->will( $this->returnValue( $shardCounts ) );
+			->willReturn( $shardCounts );
 
 		$settings = new ClusterSettings( $config, $cluster );
-		$this->assertEquals( $expect, $settings->getShardCount( $indexType ) );
+		$this->assertEquals( $expect, $settings->getShardCount( $indexSuffix ) );
 	}
 
 	public static function provideReplicaCounts() {
@@ -70,17 +75,16 @@ class ClusterSettingsTest extends CirrusTestCase {
 	/**
 	 * @dataProvider provideReplicaCounts
 	 */
-	public function testReplicaCount( $replicas, $cluster, $indexType, $expect ) {
+	public function testReplicaCount( $replicas, $cluster, $indexSuffix, $expect ) {
 		$config = $this->getMockBuilder( SearchConfig::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$config->expects( $this->any() )
-			->method( 'get' )
+		$config->method( 'get' )
 			->with( 'CirrusSearchReplicas' )
-			->will( $this->returnValue( $replicas ) );
+			->willReturn( $replicas );
 
 		$settings = new ClusterSettings( $config, $cluster );
-		$this->assertEquals( $expect, $settings->getReplicaCount( $indexType ) );
+		$this->assertEquals( $expect, $settings->getReplicaCount( $indexSuffix ) );
 	}
 
 	public static function provideMaxShardsPerNode() {
@@ -88,25 +92,25 @@ class ClusterSettingsTest extends CirrusTestCase {
 			'empty configuration' => [
 				'maxShardsPerNode' => [],
 				'cluster' => 'default',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => -1,
 			],
 			'explicitly unbounded' => [
 				'maxShardsPerNode' => [ 'content' => 1, 'general' => 'unlimited' ],
 				'cluster' => 'default',
-				'indexType' => 'general',
+				'indexSuffix' => 'general',
 				'expect' => -1,
 			],
 			'defined for index type' => [
 				'maxShardsPerNode' => [ 'content' => 1 ],
 				'cluster' => 'default',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => 1,
 			],
 			'defined for other index type' => [
 				'maxShardsPerNode' => [ 'general' => 1 ],
 				'cluster' => 'default',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => -1,
 			],
 			'defined per cluster (1/2)' => [
@@ -115,7 +119,7 @@ class ClusterSettingsTest extends CirrusTestCase {
 					'cluster2' => [ 'content' => 1 ],
 				],
 				'cluster' => 'cluster1',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => 3,
 			],
 
@@ -125,7 +129,7 @@ class ClusterSettingsTest extends CirrusTestCase {
 					'cluster2' => [ 'content' => 1 ],
 				],
 				'cluster' => 'cluster2',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => 1,
 			],
 			'mixed per-cluster and global defaults (1/2)' => [
@@ -134,7 +138,7 @@ class ClusterSettingsTest extends CirrusTestCase {
 					'content' => 1,
 				],
 				'cluster' => 'cluster1',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => 3,
 			],
 			'mixed per-cluster and global defaults (2/2)' => [
@@ -144,7 +148,7 @@ class ClusterSettingsTest extends CirrusTestCase {
 					'content' => 1,
 				],
 				'cluster' => 'cluster1',
-				'indexType' => 'content',
+				'indexSuffix' => 'content',
 				'expect' => 3,
 			],
 		];
@@ -153,46 +157,16 @@ class ClusterSettingsTest extends CirrusTestCase {
 	/**
 	 * @dataProvider provideMaxShardsPerNode
 	 */
-	public function testGetMaxShardsPerNode( $maxShardsPerNode, $cluster, $indexType, $expect ) {
+	public function testGetMaxShardsPerNode( $maxShardsPerNode, $cluster, $indexSuffix, $expect ) {
 		$config = $this->getMockBuilder( SearchConfig::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$config->expects( $this->any() )
-			->method( 'get' )
+		$config->method( 'get' )
 			->with( 'CirrusSearchMaxShardsPerNode' )
-			->will( $this->returnValue( $maxShardsPerNode ) );
+			->willReturn( $maxShardsPerNode );
 
 		$settings = new ClusterSettings( $config, $cluster );
-		$this->assertEquals( $expect, $settings->getMaxShardsPerNode( $indexType ) );
-	}
-
-	public static function provideDropDelayedJobsAfter() {
-		return [
-			'Simple integer timeout is returned directly' => [
-				60, 'dc-foo', 60
-			],
-			'Can set per-cluster timeout' => [
-				[ 'dc-foo' => 99, 'labsearch' => 42 ],
-				'labsearch',
-				42
-			],
-		];
-	}
-
-	/**
-	 * @dataProvider provideDropDelayedJobsAfter()
-	 */
-	public function testDropDelayedJobsAfter( $timeout, $cluster, $expect ) {
-		$config = $this->getMockBuilder( SearchConfig::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$config->expects( $this->any() )
-			->method( 'get' )
-			->with( 'CirrusSearchDropDelayedJobsAfter' )
-			->will( $this->returnValue( $timeout ) );
-
-		$settings = new ClusterSettings( $config, $cluster );
-		$this->assertEquals( $expect, $settings->getDropDelayedJobsAfter() );
+		$this->assertEquals( $expect, $settings->getMaxShardsPerNode( $indexSuffix ) );
 	}
 
 	public static function provideIsPrivate() {
@@ -224,5 +198,72 @@ class ClusterSettingsTest extends CirrusTestCase {
 		] );
 		$settings = new ClusterSettings( $config, $cluster );
 		$this->assertEquals( $expected, $settings->isPrivateCluster() );
+	}
+
+	public function provideIsolation() {
+		return [
+			'null value isolates everything' => [
+				'expected' => true,
+				'cluster' => 'arbitrary-name',
+				'isolateClusters' => null
+			],
+			'When configured with no named clusters unnamed clusters are not isolated' => [
+				'expected' => false,
+				'cluster' => 'unnamed',
+				'isolateClusters' => []
+			],
+			'When configured with named clusters unnamed clusters are not isolated' => [
+				'expected' => false,
+				'cluster' => 'unnamed',
+				'isolateClusters' => [ 'arbitrary-name' ]
+			],
+			'Named clusters are write isolated' => [
+				'expected' => true,
+				'cluster' => 'arbitrary-name',
+				'isolateClusters' => [ 'arbitrary-name' ]
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider provideIsolation
+	 */
+	public function testIsIsolated( $expected, $cluster, $isolateClusters ) {
+		$config = new HashSearchConfig( [
+			'CirrusSearchWriteIsolateClusters' => $isolateClusters,
+		] );
+		$settings = new ClusterSettings( $config, $cluster );
+		$this->assertEquals( $expected, $settings->isIsolated() );
+	}
+
+	public function provideElasticaWritePartitionCount() {
+		return [
+			'unnamed clusters default to 1' => [
+				'expected' => 1,
+				'cluster' => 'unnamed-cluster',
+				'partitionCount' => []
+			],
+			'unnamed clusters default to 1 (part duex)' => [
+				'expected' => 1,
+				'cluster' => 'unnamed-cluster',
+				'partitionCount' => [ 'arbitrary-cluster' => 4 ]
+			],
+			'named clusters receive provided value' => [
+				'expected' => 3,
+				'cluster' => 'named-cluster',
+				'partitionCount' => [ 'named-cluster' => 3 ],
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider provideElasticaWritePartitionCount
+	 */
+	public function testElasticaWritePartitionCount( $expected, $cluster, $partitionCount ) {
+		$config = new HashSearchConfig( [
+			'CirrusSearchElasticaWritePartitionCounts' => $partitionCount,
+		] );
+		$settings = new ClusterSettings( $config, $cluster );
+		$this->assertEquals( $expected, $settings->getElasticaWritePartitionCount() );
 	}
 }

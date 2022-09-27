@@ -22,21 +22,21 @@ use CirrusSearch\Util;
  */
 class QualityScore implements SuggestScoringMethod {
 	// TODO: move these constants into a cirrus profile
-	const INCOMING_LINKS_MAX_DOCS_FACTOR = 0.1;
+	public const INCOMING_LINKS_MAX_DOCS_FACTOR = 0.1;
 
-	const EXTERNAL_LINKS_NORM = 20;
-	const PAGE_SIZE_NORM = 50000;
-	const HEADING_NORM = 20;
-	const REDIRECT_NORM = 30;
+	public const EXTERNAL_LINKS_NORM = 20;
+	public const PAGE_SIZE_NORM = 50000;
+	public const HEADING_NORM = 20;
+	public const REDIRECT_NORM = 30;
 
-	const INCOMING_LINKS_WEIGHT = 0.6;
-	const EXTERNAL_LINKS_WEIGHT = 0.1;
-	const PAGE_SIZE_WEIGHT = 0.1;
-	const HEADING_WEIGHT = 0.2;
-	const REDIRECT_WEIGHT = 0.1;
+	private const INCOMING_LINKS_WEIGHT = 0.6;
+	private const EXTERNAL_LINKS_WEIGHT = 0.1;
+	private const PAGE_SIZE_WEIGHT = 0.1;
+	private const HEADING_WEIGHT = 0.2;
+	private const REDIRECT_WEIGHT = 0.1;
 
 	// The final score will be in the range [0, SCORE_RANGE]
-	const SCORE_RANGE = 10000000;
+	public const SCORE_RANGE = 10000000;
 
 	/**
 	 * Template boosts configured by the mediawiki admin.
@@ -75,12 +75,12 @@ class QualityScore implements SuggestScoringMethod {
 			$this->incomingLinksNorm );
 		$pageSize = $this->scoreNormLog2( $doc['text_bytes'] ?? 0,
 			self::PAGE_SIZE_NORM );
-		$extLinks = $this->scoreNorm( isset( $doc['external_link'] )
-			? count( $doc['external_link'] ) : 0, self::EXTERNAL_LINKS_NORM );
-		$headings = $this->scoreNorm( isset( $doc['heading'] )
-			? count( $doc['heading'] ) : 0, self::HEADING_NORM );
-		$redirects = $this->scoreNorm( isset( $doc['redirect'] )
-			? count( $doc['redirect'] ) : 0, self::REDIRECT_NORM );
+		$extLinks = $this->scoreNorm( count( $doc['external_link'] ?? [] ),
+			self::EXTERNAL_LINKS_NORM );
+		$headings = $this->scoreNorm( count( $doc['heading'] ?? [] ),
+			self::HEADING_NORM );
+		$redirects = $this->scoreNorm( count( $doc['redirect'] ?? [] ),
+			self::REDIRECT_NORM );
 
 		$score = $incLinks * self::INCOMING_LINKS_WEIGHT;
 
@@ -165,7 +165,7 @@ class QualityScore implements SuggestScoringMethod {
 		}
 
 		// Transform the boost to a value between -1 and 1
-		$boost = $boost > 1 ? 1 - ( 1 / $boost ) : - ( 1 - $boost );
+		$boost = $boost > 1 ? 1 - ( 1 / $boost ) : -( 1 - $boost );
 		// @todo: the 0.5 ratio is hardcoded we could maybe allow customization
 		// here, this would be a way to increase the impact of template boost
 		if ( $boost > 0 ) {
@@ -225,12 +225,12 @@ class QualityScore implements SuggestScoringMethod {
 			$this->incomingLinksNorm, 'incoming_links' );
 		$pageSize = $this->explainScoreNormLog2( $doc['text_bytes'] ?? 0,
 			self::PAGE_SIZE_NORM, 'text_bytes' );
-		$extLinks = $this->explainScoreNorm( isset( $doc['external_link'] )
-			? count( $doc['external_link'] ) : 0, self::EXTERNAL_LINKS_NORM, 'external_links_count' );
-		$headings = $this->explainScoreNorm( isset( $doc['heading'] )
-			? count( $doc['heading'] ) : 0, self::HEADING_NORM, 'headings_count' );
-		$redirects = $this->explainScoreNorm( isset( $doc['redirect'] )
-			? count( $doc['redirect'] ) : 0, self::REDIRECT_NORM, 'redirects_count' );
+		$extLinks = $this->explainScoreNorm( count( $doc['external_link'] ?? [] ),
+			self::EXTERNAL_LINKS_NORM, 'external_links_count' );
+		$headings = $this->explainScoreNorm( count( $doc['heading'] ?? [] ),
+			self::HEADING_NORM, 'headings_count' );
+		$redirects = $this->explainScoreNorm( count( $doc['redirect'] ?? [] ),
+			self::REDIRECT_NORM, 'redirects_count' );
 
 		$details = [];
 		$total = self::INCOMING_LINKS_WEIGHT + self::EXTERNAL_LINKS_WEIGHT +
@@ -316,7 +316,7 @@ class QualityScore implements SuggestScoringMethod {
 		$score = $metadataExplain['value'];
 		$boost = $boostExplain['value'];
 		$boostExplain = [
-			'value' => $boost > 1 ? 1 - ( 1 / $boost ) : - ( 1 - $boost ),
+			'value' => $boost > 1 ? 1 - ( 1 / $boost ) : -( 1 - $boost ),
 			'description' => ( $boost > 1 ? "1-(1/boost)" : "-(1-boost)" ) . "; boost = $boost",
 			'details' => [ 'template_boosts' => $boostExplain ]
 		];

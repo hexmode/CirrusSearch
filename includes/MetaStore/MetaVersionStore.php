@@ -8,16 +8,22 @@ use CirrusSearch\Maintenance\ArchiveMappingConfigBuilder;
 use CirrusSearch\Maintenance\MappingConfigBuilder;
 use CirrusSearch\Maintenance\SuggesterAnalysisConfigBuilder;
 use CirrusSearch\Maintenance\SuggesterMappingConfigBuilder;
+use Elastica\Index;
 use Elastica\Query\BoolQuery;
 use GitInfo;
+use WikiMap;
 
 class MetaVersionStore implements MetaStore {
-	const METASTORE_TYPE = 'version';
+	public const METASTORE_TYPE = 'version';
 
 	/** @var Connection */
 	private $connection;
 
-	public function __construct( Connection $connection ) {
+	/** @var Index */
+	private $index;
+
+	public function __construct( Index $index, Connection $connection ) {
+		$this->index = $index;
 		$this->connection = $connection;
 	}
 
@@ -56,7 +62,7 @@ class MetaVersionStore implements MetaStore {
 	 * @param string $typeName
 	 */
 	public function update( $baseName, $typeName ) {
-		$this->getType()->addDocument( self::buildDocument( $this->connection, $baseName, $typeName ) );
+		$this->index->addDocuments( [ self::buildDocument( $this->connection, $baseName, $typeName ) ] );
 	}
 
 	/**
@@ -64,10 +70,10 @@ class MetaVersionStore implements MetaStore {
 	 */
 	public function updateAll( $baseName ) {
 		$docs = [];
-		foreach ( $this->connection->getAllIndexTypes( null ) as $typeName ) {
+		foreach ( $this->connection->getAllIndexSuffixes( null ) as $typeName ) {
 			$docs[] = self::buildDocument( $this->connection, $baseName, $typeName );
 		}
-		$this->getType()->addDocuments( $docs );
+		$this->index->addDocuments( $docs );
 	}
 
 	/**
@@ -77,7 +83,7 @@ class MetaVersionStore implements MetaStore {
 	 */
 	public function find( $baseName, $typeName ) {
 		$docId = self::docId( $this->connection, $baseName, $typeName );
-		return $this->getType()->getDocument( $docId );
+		return $this->index->getDocument( $docId );
 	}
 
 	/**
@@ -91,7 +97,7 @@ class MetaVersionStore implements MetaStore {
 			->setTerm( 'type', self::METASTORE_TYPE ) );
 		if ( $baseName !== null ) {
 			$ids = new \Elastica\Query\Ids();
-			foreach ( $this->connection->getAllIndexTypes( null ) as $typeName ) {
+			foreach ( $this->connection->getAllIndexSuffixes( null ) as $typeName ) {
 				$ids->addId( self::docId( $this->connection, $baseName, $typeName ) );
 			}
 			$filter->addFilter( $ids );
@@ -100,7 +106,7 @@ class MetaVersionStore implements MetaStore {
 		$query = new \Elastica\Query( $filter );
 		// WHAT ARE YOU DOING TRACKING MORE THAN 5000 INDICES?!?
 		$query->setSize( 5000 );
-		return $this->getType()->search( $query );
+		return $this->index->search( $query );
 	}
 
 	/**
@@ -112,10 +118,10 @@ class MetaVersionStore implements MetaStore {
 	 */
 	public static function buildDocument( Connection $connection, $baseName, $typeName ) {
 		global $IP;
-		if ( $typeName == Connection::TITLE_SUGGEST_TYPE ) {
+		if ( $typeName == Connection::TITLE_SUGGEST_INDEX_SUFFIX ) {
 			list( $aMaj, $aMin ) = explode( '.', SuggesterAnalysisConfigBuilder::VERSION, 3 );
 			list( $mMaj, $mMin ) = explode( '.', SuggesterMappingConfigBuilder::VERSION, 3 );
-		} elseif ( $typeName === Connection::ARCHIVE_INDEX_TYPE ) {
+		} elseif ( $typeName === Connection::ARCHIVE_INDEX_SUFFIX ) {
 			list( $aMaj, $aMin ) = explode( '.', AnalysisConfigBuilder::VERSION, 3 );
 			list( $mMaj, $mMin ) = explode( '.', ArchiveMappingConfigBuilder::VERSION, 3 );
 		} else {
@@ -127,7 +133,7 @@ class MetaVersionStore implements MetaStore {
 		$docId = self::docId( $connection, $baseName, $typeName );
 		$data = [
 			'type' => self::METASTORE_TYPE,
-			'wiki' => wfWikiId(),
+			'wiki' => WikiMap::getCurrentWikiId(),
 			'index_name' => $connection->getIndexName( $baseName, $typeName ),
 			'analysis_maj' => $aMaj,
 			'analysis_min' => $aMin,
@@ -139,14 +145,6 @@ class MetaVersionStore implements MetaStore {
 			'cirrus_commit' => $cirrusInfo->getHeadSHA1(),
 		];
 
-		return new \Elastica\Document( $docId, $data );
-	}
-
-	private function getType() {
-		$type = MetaStoreIndex::getElasticaType( $this->connection );
-		if ( !$type->exists() ) {
-			throw new \Exception( "meta store does not exist, you must index your data first" );
-		}
-		return $type;
+		return new \Elastica\Document( $docId, $data, '_doc' );
 	}
 }

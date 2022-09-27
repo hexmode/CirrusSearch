@@ -1,6 +1,6 @@
 'use strict';
 
-const { After, Before } = require( 'cucumber' );
+const { Before } = require( 'cucumber' );
 const Promise = require( 'bluebird' );
 const MWBot = require( 'mwbot' );
 const fs = require( 'fs' );
@@ -164,7 +164,7 @@ BeforeOnce( { tags: '@accented_namespace' }, runBatchFn( {
 BeforeOnce( { tags: '@setup_main or @filters or @prefix or @bad_syntax or @wildcard or @exact_quotes or @phrase_prefix', timeout: 60000 }, runBatchFn( {
 	edit: {
 		'Template:Template Test': 'pickles [[Category:TemplateTagged]]',
-		'Catapult/adsf': 'catapult subpage [[Catapult]]',
+		'Catapult/adsf': 'catapult subpage [[Catapult|Catapults]]',
 		'Links To Catapult': '[[Catapult]]',
 		Catapult: '♙ asdf [[Category:Weaponry]]',
 		'Amazing Catapult': 'test [[Catapult]] [[Category:Weaponry]]',
@@ -467,7 +467,7 @@ BeforeOnce( { tags: '@go or @options', timeout: 120000 }, runBatchFn( {
 	}
 } ) );
 
-BeforeOnce( { tags: '@file_text or @filesearch' }, Promise.coroutine( function* () {
+BeforeOnce( { tags: '@file_text or @filesearch', timeout: 60000 }, Promise.coroutine( function* () {
 	// TODO: this one is really unclear to me, figure out why we need such hack
 	// This file is available on commons.wikimedia.org and because $wgUseInstantCommons is set to true
 	// mwbot may think it's a dup and won't upload it. Use uploadOverwrite to avoid that.
@@ -658,14 +658,6 @@ BeforeOnce( { tags: '@geo' }, runBatchFn( {
 		'Santa Clara': 'Santa Clara is a nice city located at {{#coordinates:primary|37.354444|-121.969167}}.',
 		Cupertino: 'Cupertino is a nice city located at {{#coordinates:primary|37.3175|-122.041944}}.'
 	}
-} ) );
-
-After( { tags: '@frozen' }, Promise.coroutine( function* () {
-	const client = yield this.onWiki();
-	yield client.request( {
-		action: 'cirrus-freeze-writes',
-		thaw: 1
-	} );
 } ) );
 
 // This needs to be the *last* hook added. That gives us some hope that everything

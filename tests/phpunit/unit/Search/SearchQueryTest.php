@@ -3,12 +3,12 @@
 namespace CirrusSearch\Search;
 
 use CirrusSearch\CirrusDebugOptions;
+use CirrusSearch\CirrusSearchHookRunner;
 use CirrusSearch\CirrusTestCase;
 use CirrusSearch\CrossSearchStrategy;
 use CirrusSearch\Fallbacks\FallbackRunner;
 use CirrusSearch\Parser\AST\ParsedQuery;
 use CirrusSearch\Parser\BasicQueryClassifier;
-use CirrusSearch\Parser\QueryParserFactory;
 use CirrusSearch\Profile\SearchProfileService;
 use CirrusSearch\Query\Builder\ContextualFilter;
 use CirrusSearch\Query\Builder\FilterBuilder;
@@ -78,7 +78,9 @@ class SearchQueryTest extends CirrusTestCase {
 	 * @throws \Exception
 	 */
 	public function testGetNamespaces( $initialNs, array $namespacesInContextualFilters, $expected ) {
-		$builder = SearchQueryBuilder::newFTSearchQueryBuilder( $this->newHashSearchConfig( [] ), "foo", $this->namespacePrefixParser() )
+		$searchConfig = $this->newHashSearchConfig( [] );
+		$query = "foo";
+		$builder = $this->getNewFTSearchQueryBuilder( $searchConfig, $query )
 			->setInitialNamespaces( $initialNs );
 		foreach ( $namespacesInContextualFilters as $name => $namespaces ) {
 			$builder->addContextualFilter( $name,
@@ -182,8 +184,7 @@ class SearchQueryTest extends CirrusTestCase {
 		CrossSearchStrategy $initialCrossSearchStrategy,
 		CrossSearchStrategy $expected
 	) {
-		$searchQuery = SearchQueryBuilder::newFTSearchQueryBuilder( $this->newHashSearchConfig( $config ), $query,
-				$this->namespacePrefixParser() )
+		$searchQuery = $this->getNewFTSearchQueryBuilder( $this->newHashSearchConfig( $config ), $query )
 			->setCrossProjectSearch( $callerStrategy->isCrossProjectSearchSupported() )
 			->setCrossLanguageSearch( $callerStrategy->isCrossLanguageSearchSupported() )
 			->setExtraIndicesSearch( $callerStrategy->isExtraIndicesSearchSupported() )
@@ -219,9 +220,8 @@ class SearchQueryTest extends CirrusTestCase {
 			'CirrusSearchEnableCrossProjectSearch' => true,
 			'CirrusSearchEnableAltLanguage' => true,
 		] );
-		$defaults = SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'test', $this->namespacePrefixParser() )->build();
-		$expectedParsedQuery = QueryParserFactory::newFullTextQueryParser( $config, $this->namespacePrefixParser() )
-			->parse( 'test' );
+		$defaults = $this->getNewFTSearchQueryBuilder( $config, 'test' )->build();
+		$expectedParsedQuery = $this->createNewFullTextQueryParser( $config )->parse( 'test' );
 		$this->assertEquals( $expectedParsedQuery, $defaults->getParsedQuery() );
 		$this->assertFalse( $defaults->hasForcedProfile() );
 		$this->assertEquals( CrossSearchStrategy::allWikisStrategy(), $defaults->getInitialCrossSearchStrategy() );
@@ -230,6 +230,7 @@ class SearchQueryTest extends CirrusTestCase {
 		$this->assertEquals( [ NS_MAIN ], $defaults->getNamespaces() );
 		$this->assertEquals( [ NS_MAIN ], $defaults->getInitialNamespaces() );
 		$this->assertEquals( 'relevance', $defaults->getSort() );
+		$this->assertNull( $defaults->getRandomSeed() );
 		$this->assertSame( 0, $defaults->getOffset() );
 		$this->assertEquals( 10, $defaults->getLimit() );
 		$this->assertEquals( CirrusDebugOptions::defaultOptions(), $defaults->getDebugOptions() );
@@ -238,6 +239,7 @@ class SearchQueryTest extends CirrusTestCase {
 		$this->assertTrue( $defaults->isWithDYMSuggestion() );
 		$this->assertFalse( $defaults->isAllowRewrite() );
 		$this->assertEmpty( $defaults->getProfileContextParameters() );
+		$this->assertEmpty( $defaults->getExtraFieldsToExtract() );
 	}
 
 	public function testBuilder() {
@@ -245,7 +247,7 @@ class SearchQueryTest extends CirrusTestCase {
 			'CirrusSearchEnableCrossProjectSearch' => true,
 			'CirrusSearchEnableAltLanguage' => true,
 		] );
-		$builder = SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'test', $this->namespacePrefixParser() )
+		$builder = $this->getNewFTSearchQueryBuilder( $config, 'test' )
 			->setExtraIndicesSearch( false )
 			->setCrossLanguageSearch( false )
 			->setCrossProjectSearch( false )
@@ -254,12 +256,14 @@ class SearchQueryTest extends CirrusTestCase {
 			->setOffset( 10 )
 			->setLimit( 100 )
 			->setDebugOptions( CirrusDebugOptions::forDumpingQueriesInUnitTests() )
-			->setSort( 'size' )
+			->setSort( 'random' )
+			->setRandomSeed( 123 )
 			->setWithDYMSuggestion( false )
 			->setAllowRewrite( true )
-			->addProfileContextParameter( "foo", "bar" );
+			->addProfileContextParameter( "foo", "bar" )
+			->setExtraFieldsToExtract( [ 'field1', 'field2' ] );
 		$custom = $builder->build();
-		$expectedParsedQuery = QueryParserFactory::newFullTextQueryParser( $config, $this->namespacePrefixParser() )
+		$expectedParsedQuery = $this->createNewFullTextQueryParser( $config )
 			->parse( 'test' );
 		$this->assertEquals( $expectedParsedQuery, $custom->getParsedQuery() );
 		$this->assertTrue( $custom->hasForcedProfile() );
@@ -269,7 +273,8 @@ class SearchQueryTest extends CirrusTestCase {
 		$this->assertEquals( SearchQuery::SEARCH_TEXT, $custom->getSearchEngineEntryPoint() );
 		$this->assertEquals( [ NS_MAIN, NS_HELP ], $custom->getNamespaces() );
 		$this->assertEquals( [ NS_MAIN, NS_HELP ], $custom->getInitialNamespaces() );
-		$this->assertEquals( 'size', $custom->getSort() );
+		$this->assertEquals( 'random', $custom->getSort() );
+		$this->assertEquals( 123, $custom->getRandomSeed() );
 		$this->assertEquals( 10, $custom->getOffset() );
 		$this->assertEquals( 100, $custom->getLimit() );
 		$this->assertEquals( CirrusDebugOptions::forDumpingQueriesInUnitTests(), $custom->getDebugOptions() );
@@ -288,6 +293,7 @@ class SearchQueryTest extends CirrusTestCase {
 		$this->assertEquals( CrossSearchStrategy::hostWikiOnlyStrategy(), $custom->getCrossSearchStrategy() );
 		$this->assertNotEmpty( $custom->getContextualFilters() );
 		$this->assertInstanceOf( ContextualFilter::class, $custom->getContextualFilters()['prefix'] );
+		$this->assertSame( [ 'field1', 'field2' ], $custom->getExtraFieldsToExtract() );
 	}
 
 	public function testSearchContextFromDefaults() {
@@ -296,7 +302,10 @@ class SearchQueryTest extends CirrusTestCase {
 			'CirrusSearchEnableAltLanguage' => true,
 		] );
 		$context = SearchContext::fromSearchQuery(
-			SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'test', $this->namespacePrefixParser() )->build() );
+			$this->getNewFTSearchQueryBuilder( $config, 'test' )->build(),
+			null,
+			$this->createMock( CirrusSearchHookRunner::class )
+		);
 		$this->assertEquals( $config, $context->getConfig() );
 		$this->assertEquals( [ NS_MAIN ], $context->getNamespaces() );
 		$this->assertFalse( $context->getLimitSearchToLocalWiki() );
@@ -317,8 +326,7 @@ class SearchQueryTest extends CirrusTestCase {
 			'CirrusSearchEnableCrossProjectSearch' => true,
 			'CirrusSearchEnableAltLanguage' => true,
 		] );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( $config, '~help:test prefix:help_talk:test',
-				$this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( $config, '~help:test prefix:help_talk:test' )
 			->setInitialNamespaces( [ NS_MAIN ] )
 			->setWithDYMSuggestion( false )
 			->setExtraIndicesSearch( false )
@@ -330,7 +338,8 @@ class SearchQueryTest extends CirrusTestCase {
 		$myFallbackRunner = new FallbackRunner( [] );
 		$context = SearchContext::fromSearchQuery(
 			$query,
-			$myFallbackRunner
+			$myFallbackRunner,
+			$this->createMock( CirrusSearchHookRunner::class )
 		);
 		$this->assertEquals( $config, $context->getConfig() );
 		// the help prefix overrides NS_MAIN
@@ -368,9 +377,10 @@ class SearchQueryTest extends CirrusTestCase {
 		] );
 
 		// Keep the $builder around so that we can reuse it for multiple queries & assertions.
-		$builder = SearchQueryBuilder::newFTSearchQueryBuilder( $hostWikiConfig, 'myquery', $this->namespacePrefixParser() )
+		$builder = $this->getNewFTSearchQueryBuilder( $hostWikiConfig, 'myquery' )
 			->addForcedProfile( SearchProfileService::RESCORE, 'foo' )
-			->addProfileContextParameter( 'foo', 'bar' );
+			->addProfileContextParameter( 'foo', 'bar' )
+			->setExtraFieldsToExtract( [ 'field1', 'field2' ] ); // these should not be propagated to the target wiki
 
 		$hostWikiQuery = $builder->build();
 		$crossSearchQuery = SearchQueryBuilder::forCrossProjectSearch( $targetWikiConfig,
@@ -418,7 +428,7 @@ class SearchQueryTest extends CirrusTestCase {
 		] );
 
 		// Keep the $builder around so that we can reuse it for multiple queries & assertions.
-		$builder = SearchQueryBuilder::newFTSearchQueryBuilder( $hostWikiConfig, 'myquery', $this->namespacePrefixParser() )
+		$builder = $this->getNewFTSearchQueryBuilder( $hostWikiConfig, 'myquery' )
 			->addForcedProfile( SearchProfileService::RESCORE, 'foo' )
 			->addProfileContextParameter( 'foo', 'bar' );
 		$hostWikiQuery = $builder->build();
@@ -483,6 +493,7 @@ class SearchQueryTest extends CirrusTestCase {
 		} else {
 			$this->assertFalse( $crossSearchQuery->hasForcedProfile() );
 		}
+		$this->assertEmpty( $crossSearchQuery->getExtraFieldsToExtract() );
 	}
 
 	public function testforRewrittenQuery() {
@@ -490,7 +501,7 @@ class SearchQueryTest extends CirrusTestCase {
 			'CirrusSearchEnableAltLanguage' => true,
 			'CirrusSearchEnableCrossProjectSearch' => true,
 		] );
-		$builder = SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'fooba\\?', $this->namespacePrefixParser() )
+		$builder = $this->getNewFTSearchQueryBuilder( $config, 'fooba\\?' )
 			->addForcedProfile( SearchProfileService::RESCORE, 'foobar' )
 			->addContextualFilter( 'hop', $this->getContextualFilter() )
 			->setLimit( 100 )
@@ -502,7 +513,8 @@ class SearchQueryTest extends CirrusTestCase {
 			->addProfileContextParameter( 'foo', 'bar' );
 		$query = $builder->build();
 
-		$rewritten = SearchQueryBuilder::forRewrittenQuery( $query, 'foobar?', $this->namespacePrefixParser() )->build();
+		$term = 'foobar?';
+		$rewritten = $this->getQueryBuilderForRewrittenQuery( $query, $term )->build();
 		$this->assertFalse( $rewritten->getParsedQuery()->hasCleanup( ParsedQuery::CLEANUP_QMARK_STRIPPING ) );
 		$this->assertFalse( $rewritten->getInitialCrossSearchStrategy()->isCrossLanguageSearchSupported() );
 		$this->assertFalse( $rewritten->getInitialCrossSearchStrategy()->isCrossProjectSearchSupported() );
@@ -522,7 +534,18 @@ class SearchQueryTest extends CirrusTestCase {
 		$this->assertEquals( $query->getContextualFilters(), $rewritten->getContextualFilters() );
 
 		$query = $builder->setExtraIndicesSearch( false )->build();
-		$rewritten = SearchQueryBuilder::forRewrittenQuery( $query, 'foobar?', $this->namespacePrefixParser() )->build();
+		$rewritten = $this->getQueryBuilderForRewrittenQuery( $query, $term )->build();
 		$this->assertFalse( $rewritten->getInitialCrossSearchStrategy()->isExtraIndicesSearchSupported() );
+	}
+
+	/**
+	 * @param SearchQuery $query
+	 * @param string $term
+	 * @return SearchQueryBuilder
+	 */
+	private function getQueryBuilderForRewrittenQuery( SearchQuery $query, string $term
+	): SearchQueryBuilder {
+		return SearchQueryBuilder::forRewrittenQuery( $query, $term, $this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner() );
 	}
 }

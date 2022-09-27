@@ -38,14 +38,15 @@ exports.config = {
 		// For Chrome/Chromium https://sites.google.com/a/chromium.org/chromedriver/capabilities
 		browserName: 'chrome',
 		maxInstances: 1,
-		chromeOptions: {
+		'goog:chromeOptions': {
 			// If DISPLAY is set, assume developer asked non-headless or CI with Xvfb.
 			// Otherwise, use --headless (added in Chrome 59)
 			// https://chromium.googlesource.com/chromium/src/+/59.0.3030.0/headless/README.md
 			args: [
 				...( process.env.DISPLAY ? [] : [ '--headless' ] ),
 				// Chrome sandbox does not work in Docker
-				...( fs.existsSync( '/.dockerenv' ) ? [ '--no-sandbox' ] : [] )
+				...( fs.existsSync( '/.dockerenv' ) ? [ '--no-sandbox' ] : [] ),
+				'--window-size=1280x1024'
 			]
 		}
 	} ],
@@ -89,12 +90,18 @@ exports.config = {
 
 	// Test reporter for stdout.
 	// See also: http://webdriver.io/guide/testrunner/reporters.html
-	reporters: [ 'spec', 'junit' ],
-	reporterOptions: {
-		junit: {
-			outputDir: logPath
-		}
-	},
+	reporters: [
+		'spec',
+		[ 'junit',
+			{
+				outputDir: logPath,
+				outputFileFormat: function ( options ) {
+					return `results-${options.cid}-junit.xml`;
+				}
+
+			}
+		]
+	],
 
 	// Options to be passed to Mocha.
 	// See the full list at http://mochajs.org/

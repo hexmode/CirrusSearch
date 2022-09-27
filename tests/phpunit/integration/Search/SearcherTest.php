@@ -4,12 +4,12 @@ namespace CirrusSearch;
 
 use CirrusSearch\Query\FullTextQueryStringQueryBuilder;
 use CirrusSearch\Search\CirrusSearchResultSet;
-use CirrusSearch\Search\SearchQueryBuilder;
 use CirrusSearch\Test\DummyConnection;
 use CirrusSearch\Test\SearchConfigUsageDecorator;
 use Elastica\Query;
 use Elastica\Response;
 use HtmlArmor;
+use LinkCacheTestTrait;
 use MediaWiki\MediaWikiServices;
 use Title;
 
@@ -19,17 +19,18 @@ use Title;
  * @group Standalone
  */
 class SearcherTest extends CirrusIntegrationTestCase {
+	use CirrusTestCaseTrait;
 
-	public function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 		MediaWikiServices::getInstance()->getConfigFactory()->register( 'CirrusSearch',
-			function () {
+			static function () {
 				return new SearchConfigUsageDecorator();
 			}
 		);
 	}
 
-	public function tearDown() : void {
+	protected function tearDown(): void {
 		MediaWikiServices::getInstance()
 			->resetServiceForTesting( 'ConfigFactory' );
 		parent::tearDown();
@@ -86,7 +87,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 			// Override the list of namespaces to give more deterministic results
 			'wgHooks' => [
 				'CanonicalNamespaces' => [
-					function ( &$namespaces ) {
+					static function ( &$namespaces ) {
 						$namespaces = [
 							0 => '',
 							-2 => 'Media',
@@ -113,9 +114,8 @@ class SearcherTest extends CirrusIntegrationTestCase {
 		] );
 
 		// Set a couple pre-defined pages for anything (morelike) that needs valid pages
-		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-		$linkCache->addGoodLinkObj( 12345, Title::newFromText( 'Some page' ) );
-		$linkCache->addGoodLinkObj( 23456, Title::newFromText( 'Other page' ) );
+		$this->addGoodLinkObject( 12345, Title::newFromText( 'Some page' ) );
+		$this->addGoodLinkObject( 23456, Title::newFromText( 'Other page' ) );
 
 		$engine = new CirrusSearch( null, CirrusDebugOptions::forDumpingQueriesInUnitTests() );
 		// Set some default namespaces, otherwise installed extensions will change
@@ -176,7 +176,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 				if ( in_array( $k, self::$CONFIG_VARS_FALSE_POSITIVES ) ) {
 					continue;
 				}
-				if ( !in_array( $k, \CirrusSearch\Api\ConfigDump::$WHITE_LIST ) ) {
+				if ( !in_array( $k, \CirrusSearch\Api\ConfigDump::$PUBLICLY_SHAREABLE_CONFIG_VARS ) ) {
 					$notInApi[] = $k;
 				}
 				if ( preg_match( '/^CirrusSearch/', $k ) == 0 ) {
@@ -195,7 +195,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 	}
 
 	private function normalizeNow( array $query ) {
-		array_walk_recursive( $query, function ( &$value, $key ) {
+		array_walk_recursive( $query, static function ( &$value, $key ) {
 			if ( $key === 'now' && is_int( $value ) ) {
 				$value = 1468084245000;
 			}
@@ -205,7 +205,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 	}
 
 	private function normalizeSeed( array $query ) {
-		array_walk_recursive( $query, function ( &$value, $key ) {
+		array_walk_recursive( $query, static function ( &$value, $key ) {
 			if ( $key === 'seed' && is_string( $value ) ) {
 				$value = 'phpunit searchText random seed';
 			}
@@ -226,7 +226,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 		if ( isset( $query[0] ) ) {
 			// list like. Expensive, but sorta-works?
 			// TODO: This breaks things that require a specific ordering, such as the token count router
-			usort( $query, function ( $a, $b ) {
+			usort( $query, static function ( $a, $b ) {
 				return strcmp( json_encode( $a ), json_encode( $b ) );
 			} );
 		} else {
@@ -240,8 +240,8 @@ class SearcherTest extends CirrusIntegrationTestCase {
 	public function archiveFixtureProvider() {
 		$tests = [];
 		foreach ( CirrusIntegrationTestCase::findFixtures( 'archiveSearch/*.query' ) as $queryFile ) {
-			$testName = substr( basename( $queryFile ), 0, - 6 );
-			$query = file_get_contents( CirrusTestCaseTrait::$FIXTURE_DIR . $queryFile );
+			$testName = substr( basename( $queryFile ), 0, -6 );
+			$query = file_get_contents( self::$FIXTURE_DIR . $queryFile );
 			// Remove trailing newline
 			$query = preg_replace( '/\n$/', '', $query );
 			$expectedFile = substr( $queryFile, 0, -5 ) . 'expected';
@@ -351,7 +351,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 		$searcher = new Searcher( new DummyConnection( $conf ), $offset, $limit, $conf );
 		$this->assertEquals( $expected, $searcher->getOffsetLimit() );
 		$searcher = new Searcher( new DummyConnection( $conf ), 0, 20, $conf );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( $conf, 'test', $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( $conf, 'test' )
 			->setDebugOptions( CirrusDebugOptions::forDumpingQueriesInUnitTests() )
 			->setOffset( $offset )
 			->setLimit( $limit );
@@ -404,7 +404,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 	public function providePhraseSuggestResponse() {
 		$tests = [];
 		foreach ( CirrusIntegrationTestCase::findFixtures( 'phraseSuggestResponses/*.config' ) as $testFile ) {
-			$testName = substr( basename( $testFile ), 0, - 7 );
+			$testName = substr( basename( $testFile ), 0, -7 );
 			$fixture = CirrusIntegrationTestCase::loadFixture( $testFile );
 			$tests[$testName] = [
 				$fixture['query'],
@@ -427,7 +427,7 @@ class SearcherTest extends CirrusIntegrationTestCase {
 				'status' => 200,
 				'responses' => [
 					[
-						'hits' => [ 'total' => 123456, 'max_score' => 0.0, 'hits' => [] ]
+						'hits' => [ 'total' => [ 'value' => 123456, 'relation' => 'eq' ], 'max_score' => 0.0, 'hits' => [] ]
 					]
 			] ] )
 		);

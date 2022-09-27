@@ -31,7 +31,12 @@ require_once "$IP/maintenance/Maintenance.php";
 require_once __DIR__ . '/../includes/Maintenance/Maintenance.php';
 
 class IndexNamespaces extends Maintenance {
+
 	public function execute() {
+		// We allow automatic creation, rather than requiring pre-existance like
+		// other scripts, to make initial setup simple and straight forward. In
+		// most fresh installations the metastore is first created here when invoked
+		// by UpdateSearchIndexConfig.
 		$store = $this->maybeCreateMetastore()->namespaceStore();
 		$this->outputIndented( "Indexing namespaces..." );
 		$store->reindex( MediaWikiServices::getInstance()->getContentLanguage() );

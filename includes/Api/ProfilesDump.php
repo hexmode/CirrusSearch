@@ -5,6 +5,7 @@ namespace CirrusSearch\Api;
 use ApiMain;
 use CirrusSearch\Profile\SearchProfileOverride;
 use CirrusSearch\Profile\SearchProfileService;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * Dumps CirrusSearch profiles for easy viewing.
@@ -55,10 +56,10 @@ class ProfilesDump extends \ApiBase {
 				$this->getResult()->addValue( [ 'profiles', $type, 'contexts', $context ], 'actual_default',
 					$service->getProfileName( $type, $context, [] ) );
 				$overriders = $service->listProfileOverrides( $type, $context );
-				usort( $overriders, function ( SearchProfileOverride $a, SearchProfileOverride $b ) {
+				usort( $overriders, static function ( SearchProfileOverride $a, SearchProfileOverride $b ) {
 					return $a->priority() <=> $b->priority();
 				} );
-				$overriders = array_map( function ( SearchProfileOverride $o ) {
+				$overriders = array_map( static function ( SearchProfileOverride $o ) {
 					return $o->explain();
 				}, $overriders );
 				$this->getResult()->addValue( [ 'profiles', $type, 'contexts', $context ], 'overriders', $overriders );
@@ -79,8 +80,7 @@ class ProfilesDump extends \ApiBase {
 	public function getAllowedParams() {
 		return [
 			'verbose' => [
-				self::PARAM_DFLT => false,
-				self::PARAM_HELP_MSG => 'apihelp-cirrus-profiles-dump-param-verbose',
+				ParamValidator::PARAM_DEFAULT => false,
 			],
 		];
 	}

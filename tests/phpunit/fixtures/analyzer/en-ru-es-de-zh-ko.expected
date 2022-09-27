@@ -1,8 +1,67 @@
 {
     "analyzer": {
-        "en_plain": {
-            "type": "custom",
+        "de_plain": {
+            "char_filter": [
+                "word_break_helper",
+                "german_charfilter"
+            ],
+            "filter": [
+                "de_icu_normalizer",
+                "preserve_original_recorder",
+                "de_icu_folding",
+                "preserve_original",
+                "remove_empty"
+            ],
             "tokenizer": "standard",
+            "type": "custom"
+        },
+        "de_plain_search": {
+            "char_filter": [
+                "word_break_helper",
+                "german_charfilter"
+            ],
+            "filter": [
+                "de_icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
+        },
+        "de_text": {
+            "char_filter": [
+                "dotted_I_fix",
+                "german_charfilter"
+            ],
+            "filter": [
+                "de_icu_normalizer",
+                "german_stop",
+                "german_normalization",
+                "german_stemmer",
+                "de_icu_folding",
+                "remove_empty"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
+        },
+        "de_text_search": {
+            "char_filter": [
+                "dotted_I_fix",
+                "german_charfilter"
+            ],
+            "filter": [
+                "de_icu_normalizer",
+                "german_stop",
+                "german_normalization",
+                "german_stemmer",
+                "de_icu_folding",
+                "remove_empty"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
+        },
+        "en_plain": {
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer",
                 "preserve_original_recorder",
@@ -10,23 +69,20 @@
                 "preserve_original",
                 "remove_empty"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_text": {
-            "type": "custom",
-            "tokenizer": "standard",
             "char_filter": [
                 "word_break_helper",
                 "kana_map"
@@ -40,11 +96,11 @@
                 "remove_empty",
                 "kstem",
                 "custom_stem"
-            ]
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_text_search": {
-            "type": "custom",
-            "tokenizer": "standard",
             "char_filter": [
                 "word_break_helper",
                 "kana_map"
@@ -58,188 +114,85 @@
                 "remove_empty",
                 "kstem",
                 "custom_stem"
-            ]
-        },
-        "ru_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper",
-                "russian_charfilter"
-            ]
-        },
-        "ru_plain_search": {
-            "type": "custom",
             "tokenizer": "standard",
-            "filter": [
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper",
-                "russian_charfilter"
-            ]
-        },
-        "ru_text": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "char_filter": [
-                "russian_charfilter"
-            ],
-            "filter": [
-                "icu_normalizer",
-                "russian_stop",
-                "russian_stemmer"
-            ]
-        },
-        "ru_text_search": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "char_filter": [
-                "russian_charfilter"
-            ],
-            "filter": [
-                "icu_normalizer",
-                "russian_stop",
-                "russian_stemmer"
-            ]
+            "type": "custom"
         },
         "es_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "icu_normalizer"
-            ],
             "char_filter": [
                 "word_break_helper"
-            ]
+            ],
+            "filter": [
+                "icu_normalizer",
+                "preserve_original_recorder",
+                "es_icu_folding",
+                "preserve_original",
+                "remove_empty"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "es_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "es_text": {
-            "type": "spanish",
             "char_filter": [
-                "word_break_helper"
-            ]
+                "dotted_I_fix"
+            ],
+            "filter": [
+                "icu_normalizer",
+                "spanish_stop",
+                "spanish_stemmer",
+                "es_icu_folding",
+                "remove_empty"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "es_text_search": {
-            "type": "spanish",
             "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "de_plain": {
-            "type": "custom",
+                "dotted_I_fix"
+            ],
+            "filter": [
+                "icu_normalizer",
+                "spanish_stop",
+                "spanish_stemmer",
+                "es_icu_folding",
+                "remove_empty"
+            ],
             "tokenizer": "standard",
-            "filter": [
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "de_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "de_text": {
-            "type": "german",
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "de_text_search": {
-            "type": "german",
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "zh_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "zh_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "zh_text": {
-            "type": "custom",
-            "tokenizer": "smartcn_tokenizer",
-            "char_filter": [
-                "stconvertfix",
-                "tsconvert"
-            ],
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ]
-        },
-        "zh_text_search": {
-            "type": "custom",
-            "tokenizer": "smartcn_tokenizer",
-            "char_filter": [
-                "stconvertfix",
-                "tsconvert"
-            ],
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ]
+            "type": "custom"
         },
         "ko_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "ko_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "ko_text": {
-            "type": "custom",
-            "tokenizer": "nori_tok",
             "char_filter": [
+                "dotted_I_fix",
                 "nori_charfilter",
                 "nori_combo_filter"
             ],
@@ -247,13 +200,14 @@
                 "nori_posfilter",
                 "nori_readingform",
                 "icu_normalizer",
-                "nori_length"
-            ]
+                "remove_empty"
+            ],
+            "tokenizer": "nori_tok",
+            "type": "custom"
         },
         "ko_text_search": {
-            "type": "custom",
-            "tokenizer": "nori_tok",
             "char_filter": [
+                "dotted_I_fix",
                 "nori_charfilter",
                 "nori_combo_filter"
             ],
@@ -261,92 +215,120 @@
                 "nori_posfilter",
                 "nori_readingform",
                 "icu_normalizer",
-                "nori_length"
-            ]
-        }
-    },
-    "filter": {
-        "icu_normalizer": {
-            "type": "icu_normalizer",
-            "name": "nfkc_cf"
+                "remove_empty"
+            ],
+            "tokenizer": "nori_tok",
+            "type": "custom"
         },
-        "icu_folding": {
-            "type": "icu_folding"
+        "ru_plain": {
+            "char_filter": [
+                "word_break_helper",
+                "russian_charfilter"
+            ],
+            "filter": [
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "remove_empty": {
-            "type": "length",
-            "min": 1
+        "ru_plain_search": {
+            "char_filter": [
+                "word_break_helper",
+                "russian_charfilter"
+            ],
+            "filter": [
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "aggressive_splitting": {
-            "type": "word_delimiter",
-            "stem_english_possessive": false,
-            "preserve_original": false
+        "ru_text": {
+            "char_filter": [
+                "dotted_I_fix",
+                "russian_charfilter"
+            ],
+            "filter": [
+                "icu_normalizer",
+                "russian_stop",
+                "russian_stemmer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "possessive_english": {
-            "type": "stemmer",
-            "language": "possessive_english"
+        "ru_text_search": {
+            "char_filter": [
+                "dotted_I_fix",
+                "russian_charfilter"
+            ],
+            "filter": [
+                "icu_normalizer",
+                "russian_stop",
+                "russian_stemmer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "custom_stem": {
-            "type": "stemmer_override",
-            "rules": "guidelines => guideline"
+        "zh_plain": {
+            "char_filter": [
+                "word_break_helper"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "russian_stop": {
-            "type": "stop",
-            "stopwords": "_russian_"
+        "zh_plain_search": {
+            "char_filter": [
+                "word_break_helper"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "russian_stemmer": {
-            "type": "stemmer",
-            "language": "russian"
+        "zh_text": {
+            "char_filter": [
+                "stconvertfix",
+                "tsconvert"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "smartcn_tokenizer",
+            "type": "custom"
         },
-        "smartcn_stop": {
-            "type": "stop",
-            "stopwords": [
-                ","
-            ]
-        },
-        "nori_posfilter": {
-            "type": "nori_part_of_speech",
-            "stoptags": [
-                "E",
-                "IC",
-                "J",
-                "MAG",
-                "MAJ",
-                "MM",
-                "SP",
-                "SSC",
-                "SSO",
-                "SC",
-                "SE",
-                "XPN",
-                "XSA",
-                "XSN",
-                "XSV",
-                "UNA",
-                "NA",
-                "VSV",
-                "VCP",
-                "VCN",
-                "VX"
-            ]
-        },
-        "nori_length": {
-            "type": "length",
-            "min": 1
+        "zh_text_search": {
+            "char_filter": [
+                "stconvertfix",
+                "tsconvert"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "smartcn_tokenizer",
+            "type": "custom"
         }
     },
     "char_filter": {
-        "word_break_helper": {
-            "type": "mapping",
+        "dotted_I_fix": {
             "mappings": [
-                "_=>\\u0020",
-                ".=>\\u0020",
-                "(=>\\u0020",
-                ")=>\\u0020"
-            ]
+                "\u0130=>I"
+            ],
+            "type": "mapping"
+        },
+        "german_charfilter": {
+            "mappings": [
+                "\u1e9e=>\u00df"
+            ],
+            "type": "mapping"
         },
         "kana_map": {
-            "type": "mapping",
             "mappings": [
                 "\\u3041=>\\u30a1",
                 "\\u3042=>\\u30a2",
@@ -354,19 +336,16 @@
                 "\\u3044=>\\u30a4",
                 "\\u3045=>\\u30a5",
                 "\\u3046=>\\u30a6",
-                "\\u3094=>\\u30f4",
                 "\\u3047=>\\u30a7",
                 "\\u3048=>\\u30a8",
                 "\\u3049=>\\u30a9",
                 "\\u304a=>\\u30aa",
-                "\\u3095=>\\u30f5",
                 "\\u304b=>\\u30ab",
                 "\\u304c=>\\u30ac",
                 "\\u304d=>\\u30ad",
                 "\\u304e=>\\u30ae",
                 "\\u304f=>\\u30af",
                 "\\u3050=>\\u30b0",
-                "\\u3096=>\\u30f6",
                 "\\u3051=>\\u30b1",
                 "\\u3052=>\\u30b2",
                 "\\u3053=>\\u30b3",
@@ -433,53 +412,159 @@
                 "\\u3090=>\\u30f0",
                 "\\u3091=>\\u30f1",
                 "\\u3092=>\\u30f2",
-                "\\u3093=>\\u30f3"
-            ]
-        },
-        "russian_charfilter": {
-            "type": "mapping",
-            "mappings": [
-                "\\u0301=>",
-                "\\u0130=>I",
-                "\\u0435\\u0308=>\\u0435",
-                "\\u0415\\u0308=>\\u0415",
-                "\\u0451=>\\u0435",
-                "\\u0401=>\\u0415"
-            ]
-        },
-        "stconvertfix": {
-            "type": "mapping",
-            "mappings": [
-                "\\u606d\\u5f18=>\\u606d \\u5f18",
-                "\\u5138=>\\u3469"
-            ]
-        },
-        "tsconvert": {
-            "type": "stconvert",
-            "delimiter": "#",
-            "keep_both": false,
-            "convert_type": "t2s"
+                "\\u3093=>\\u30f3",
+                "\\u3094=>\\u30f4",
+                "\\u3095=>\\u30f5",
+                "\\u3096=>\\u30f6"
+            ],
+            "type": "mapping"
         },
         "nori_charfilter": {
-            "type": "mapping",
             "mappings": [
-                "\\u0130=>I",
                 "\\u00B7=>\\u0020",
                 "\\u318D=>\\u0020",
                 "\\u00AD=>",
                 "\\u200C=>"
-            ]
+            ],
+            "type": "mapping"
         },
         "nori_combo_filter": {
-            "type": "pattern_replace",
             "pattern": "[\\u0300-\\u0331]",
-            "replacement": ""
+            "replacement": "",
+            "type": "pattern_replace"
+        },
+        "russian_charfilter": {
+            "mappings": [
+                "\\u0301=>",
+                "\\u0435\\u0308=>\\u0435",
+                "\\u0415\\u0308=>\\u0415",
+                "\\u0451=>\\u0435",
+                "\\u0401=>\\u0415"
+            ],
+            "type": "mapping"
+        },
+        "stconvertfix": {
+            "mappings": [
+                "\\u606d\\u5f18=>\\u606d \\u5f18",
+                "\\u5138=>\\u3469"
+            ],
+            "type": "mapping"
+        },
+        "tsconvert": {
+            "convert_type": "t2s",
+            "delimiter": "#",
+            "keep_both": false,
+            "type": "stconvert"
+        },
+        "word_break_helper": {
+            "mappings": [
+                "_=>\\u0020",
+                ".=>\\u0020",
+                "(=>\\u0020",
+                ")=>\\u0020"
+            ],
+            "type": "mapping"
+        }
+    },
+    "filter": {
+        "aggressive_splitting": {
+            "preserve_original": false,
+            "stem_english_possessive": false,
+            "type": "word_delimiter"
+        },
+        "custom_stem": {
+            "rules": "guidelines => guideline",
+            "type": "stemmer_override"
+        },
+        "de_icu_folding": {
+            "type": "icu_folding",
+            "unicodeSetFilter": "[^\u00c4\u00e4\u00d6\u00f6\u00dc\u00fc\u1e9e\u00df]"
+        },
+        "de_icu_normalizer": {
+            "name": "nfkc_cf",
+            "type": "icu_normalizer",
+            "unicodeSetFilter": "[^\u1e9e\u00df]"
+        },
+        "es_icu_folding": {
+            "type": "icu_folding",
+            "unicodeSetFilter": "[^\u00d1\u00f1]"
+        },
+        "german_stemmer": {
+            "language": "light_german",
+            "type": "stemmer"
+        },
+        "german_stop": {
+            "stopwords": "_german_",
+            "type": "stop"
+        },
+        "icu_folding": {
+            "type": "icu_folding"
+        },
+        "icu_normalizer": {
+            "name": "nfkc_cf",
+            "type": "icu_normalizer"
+        },
+        "nori_posfilter": {
+            "stoptags": [
+                "E",
+                "IC",
+                "J",
+                "MAG",
+                "MAJ",
+                "MM",
+                "SP",
+                "SSC",
+                "SSO",
+                "SC",
+                "SE",
+                "XPN",
+                "XSA",
+                "XSN",
+                "XSV",
+                "UNA",
+                "NA",
+                "VSV",
+                "VCP",
+                "VCN",
+                "VX"
+            ],
+            "type": "nori_part_of_speech"
+        },
+        "possessive_english": {
+            "language": "possessive_english",
+            "type": "stemmer"
+        },
+        "remove_empty": {
+            "min": 1,
+            "type": "length"
+        },
+        "russian_stemmer": {
+            "language": "russian",
+            "type": "stemmer"
+        },
+        "russian_stop": {
+            "stopwords": "_russian_",
+            "type": "stop"
+        },
+        "smartcn_stop": {
+            "stopwords": [
+                ","
+            ],
+            "type": "stop"
+        },
+        "spanish_stemmer": {
+            "language": "light_spanish",
+            "type": "stemmer"
+        },
+        "spanish_stop": {
+            "stopwords": "_spanish_",
+            "type": "stop"
         }
     },
     "tokenizer": {
         "nori_tok": {
-            "type": "nori_tokenizer",
-            "decompound_mode": "mixed"
+            "decompound_mode": "mixed",
+            "type": "nori_tokenizer"
         }
     }
 }

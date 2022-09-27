@@ -3,7 +3,7 @@
 namespace CirrusSearch\BuildDocument;
 
 use CirrusSearch\CirrusSearch;
-use CirrusSearch\Connection;
+use CirrusSearch\HashSearchConfig;
 use ContentHandler;
 use Elastica\Document;
 use ParserCache;
@@ -23,6 +23,16 @@ class ParserOutputPagePropertiesTest extends \MediaWikiIntegrationTestCase {
 		$this->assertContains( 'Template:CirrusSearchInvalidUTF8',
 			ParserOutputPageProperties::fixAndFlagInvalidUTF8InSource(
 				[ 'source_text' => chr( 130 ) ], 1 )['template'] ?? [] );
+	}
+
+	public function testTruncateFileContent() {
+		$doc = [ 'file_text' => 'e é e' ];
+		$this->assertSame( $doc, ParserOutputPageProperties::truncateFileTextContent( -1, $doc ) );
+		$this->assertSame( $doc, ParserOutputPageProperties::truncateFileTextContent( 100, $doc ) );
+		$this->assertSame( [ 'file_text' => '' ], ParserOutputPageProperties::truncateFileTextContent( 0, $doc ) );
+		$this->assertSame( [ 'file_text' => 'e ' ], ParserOutputPageProperties::truncateFileTextContent( 2, $doc ) );
+		$this->assertSame( [ 'file_text' => 'e ' ], ParserOutputPageProperties::truncateFileTextContent( 3, $doc ) );
+		$this->assertSame( [ 'file_text' => 'e é' ], ParserOutputPageProperties::truncateFileTextContent( 4, $doc ) );
 	}
 
 	public function displayTitleProvider() {
@@ -96,8 +106,8 @@ class ParserOutputPagePropertiesTest extends \MediaWikiIntegrationTestCase {
 
 	private function buildDoc( WikiPage $page ) {
 		$doc = new Document( null, [] );
-		$cache = $this->mock( ParserCache::class );
-		$builder = new ParserOutputPageProperties( $cache, false );
+		$cache = $this->createMock( ParserCache::class );
+		$builder = new ParserOutputPageProperties( $cache, false, new HashSearchConfig( [] ) );
 		$builder->finalizeReal( $doc, $page, null, new CirrusSearch );
 		return $doc;
 	}
@@ -106,47 +116,40 @@ class ParserOutputPagePropertiesTest extends \MediaWikiIntegrationTestCase {
 	 * @dataProvider displayTitleProvider
 	 */
 	public function testDisplayTitle( $expected, Title $title, $displayTitle ) {
-		$parserOutput = $this->mock( ParserOutput::class );
-		$parserOutput->expects( $this->any() )
-			->method( 'getDisplayTitle' )
-			->will( $this->returnValue( $displayTitle ) );
+		$parserOutput = $this->createMock( ParserOutput::class );
+		$parserOutput->method( 'getDisplayTitle' )
+			->willReturn( $displayTitle );
 
-		$engine = new CirrusSearch();
 		$page = $this->pageWithMockParserOutput( $title, $parserOutput );
-		$conn = $this->mock( Connection::class );
 		$doc = $this->buildDoc( $page );
 		$this->assertTrue( $doc->has( 'display_title' ), 'field must exist' );
 		$this->assertSame( $expected, $doc->get( 'display_title' ) );
 	}
 
-	private function mock( $className ) {
-		return $this->getMockBuilder( $className )
-			->disableOriginalConstructor()
-			->getMock();
+	public function testParserOutputUnavailable() {
+		$title = Title::makeTitle( NS_MAIN, 'Phpunit' );
+		$page = $this->pageWithMockParserOutput( $title, null );
+		$this->expectException( BuildDocumentException::class );
+		$this->expectExceptionMessage( "ParserOutput cannot be obtained." );
+		$this->buildDoc( $page );
 	}
 
-	private function pageWithMockParserOutput( Title $title, ParserOutput $parserOutput ) {
-		$contentHandler = $this->mock( ContentHandler::class );
-		$contentHandler->expects( $this->any() )
-			->method( 'getParserOutputForIndexing' )
-			->will( $this->returnValue( $parserOutput ) );
-		$contentHandler->expects( $this->any() )
-			->method( 'getDataForSearchIndex' )
-			->will( $this->returnValue( [] ) );
+	private function pageWithMockParserOutput( Title $title, ?ParserOutput $parserOutput ) {
+		$contentHandler = $this->createMock( ContentHandler::class );
+		$contentHandler->method( 'getParserOutputForIndexing' )
+			->willReturn( $parserOutput );
+		$contentHandler->method( 'getDataForSearchIndex' )
+			->willReturn( [] );
 
-		$page = $this->mock( WikiPage::class );
-		$page->expects( $this->any() )
-			->method( 'getTitle' )
-			->will( $this->returnValue( $title ) );
-		$page->expects( $this->any() )
-			->method( 'getContentHandler' )
-			->will( $this->returnValue( $contentHandler ) );
-		$page->expects( $this->any() )
-			->method( 'getContent' )
-			->will( $this->returnValue( new \WikitextContent( 'TEST_CONTENT' ) ) );
-		$page->expects( $this->any() )
-			->method( 'getId' )
-			->will( $this->returnValue( 2 ) );
+		$page = $this->createMock( WikiPage::class );
+		$page->method( 'getTitle' )
+			->willReturn( $title );
+		$page->method( 'getContentHandler' )
+			->willReturn( $contentHandler );
+		$page->method( 'getContent' )
+			->willReturn( new \WikitextContent( 'TEST_CONTENT' ) );
+		$page->method( 'getId' )
+			->willReturn( 2 );
 
 		return $page;
 	}

@@ -32,7 +32,7 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 	/** @var array mediawiki/cirrussearch/request schema */
 	private $schema;
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$schemaPath = self::$FIXTURE_DIR . 'requestLogging/mediawiki_cirrussearch_request.schema.yaml';
@@ -49,9 +49,8 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 		$this->assertFalse( $logger->hasQueryLogs() );
 		$log = $this->getMockBuilder( RequestLog::class )->getMock();
 		foreach ( [ 'getLogVariables', 'getRequests' ] as $fn ) {
-			$log->expects( $this->any() )
-				->method( $fn )
-				->will( $this->returnValue( [] ) );
+			$log->method( $fn )
+				->willReturn( [] );
 		}
 		$logger->addRequest( $log );
 		$this->assertTrue( $logger->hasQueryLogs() );
@@ -156,10 +155,10 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 
 		switch ( $query['type'] ) {
 		case 'fulltext':
-			$work = function ( $config, $connection ) use ( $query ) {
-				$offset = isset( $query['offset'] ) ? $query['offset'] : 0;
-				$limit = isset( $query['limit'] ) ? $query['limit'] : 20;
-				$namespaces = isset( $query['namespaces'] ) ? $query['namespaces'] : null;
+			$work = static function ( $config, $connection ) use ( $query ) {
+				$offset = $query['offset'] ?? 0;
+				$limit = $query['limit'] ?? 20;
+				$namespaces = $query['namespaces'] ?? null;
 				$config = new HashSearchConfig(
 					[ SearchConfig::INDEX_BASE_NAME => 'wiki' ],
 					[ HashSearchConfig::FLAG_INHERIT ] );
@@ -187,30 +186,20 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 				}
 			}
 
-			$work = function ( $config, $connection ) use ( $query ) {
-				$limit = isset( $query['limit'] ) ? $query['limit'] : 5;
-				$offset = isset( $query['offset'] ) ? $query['offset'] : 0;
-				$namespaces = isset( $query['namespaces'] ) ? $query['namespaces'] : null;
+			$work = static function ( $config, $connection ) use ( $query ) {
+				$limit = $query['limit'] ?? 5;
+				$offset = $query['offset'] ?? 0;
+				$namespaces = $query['namespaces'] ?? null;
 				$suggester = new CompletionSuggester( $connection, $limit, $offset, $config, $namespaces, null, 'wiki' );
 				$suggester->suggest( $query['term'] );
 			};
 			break;
 
 		case 'get':
-			$work = function ( $config, $connection ) use ( $query ) {
+			$work = static function ( $config, $connection ) use ( $query ) {
 				$searcher = new Searcher( $connection, 0, 20, $config, null, null, 'wiki' );
-				$sourceFiltering = isset( $query['sourceFiltering'] )
-					? $query['sourceFiltering']
-					: true;
+				$sourceFiltering = $query['sourceFiltering'] ?? true;
 				$searcher->get( $query['docIds'], $sourceFiltering );
-			};
-			break;
-
-		case 'findNamespace':
-			$work = function ( $config, $connection ) use ( $query ) {
-				$searcher = new Searcher( $connection, 0, 20, $config, null, null, 'wiki' );
-				// ugly ... but whatever
-				$searcher->updateNamespacesFromQuery( $query['name'] );
 			};
 			break;
 
@@ -224,6 +213,8 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 	/**
 	 * Build the necessary dependencies to use Searcher to return a specified
 	 * response.
+	 * @param array|null $responses
+	 * @return array
 	 */
 	private function buildDependencies( $responses ) {
 		// Plugin in a request logger that we know is empty
@@ -263,10 +254,9 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 			$transport = $this->getMockBuilder( AbstractTransport::class )
 				->disableOriginalConstructor()
 				->getMock();
-			$transport->expects( $this->any() )
-				->method( 'exec' )
+			$transport->method( 'exec' )
 				->will( $this->onConsecutiveCalls(
-					...array_map( function ( $response ) {
+					...array_map( static function ( $response ) {
 						return new Response( $response, 200 );
 					}, $responses )
 				) );
@@ -278,10 +268,11 @@ class RequestLoggerTest extends CirrusIntegrationTestCase {
 					[ 'transport' => $transport ],
 				]
 			],
+			'wgCirrusSearchNamespaceResolutionMethod' => 'utr30',
 		] );
 		$connection = new Connection( $config, 'default' );
 		$this->setTemporaryHook( 'PrefixSearchExtractNamespace',
-			function ( &$namespace, &$query ) use ( $connection ) {
+			static function ( &$namespace, &$query ) use ( $connection ) {
 				return Hooks::prefixSearchExtractNamespaceWithConnection( $connection,
 					$namespace, $query );
 			}

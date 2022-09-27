@@ -3,7 +3,6 @@
 namespace CirrusSearch\Parser;
 
 use CirrusSearch\CirrusTestCase;
-use CirrusSearch\HashSearchConfig;
 
 /**
  * @covers \CirrusSearch\Parser\BasicQueryClassifier
@@ -42,11 +41,9 @@ class BasicQueryClassifierTest extends CirrusTestCase {
 
 	/**
 	 * @dataProvider provideQueries
-	 * @param string $query
-	 * @param string|null $class
 	 */
 	public function test( $query, $classes ) {
-		$parser = QueryParserFactory::newFullTextQueryParser( new HashSearchConfig( [] ), $this->namespacePrefixParser() );
+		$parser = $this->createNewFullTextQueryParser( $this->newHashSearchConfig( [] ) );
 		$parsedQuery = $parser->parse( $query );
 		$classifier = new BasicQueryClassifier();
 		sort( $classes );

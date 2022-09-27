@@ -8,6 +8,7 @@ use CirrusSearch\Profile\SearchProfileServiceFactoryFactory;
 use Config;
 use MediaWiki\MediaWikiServices;
 use RequestContext;
+use WikiMap;
 
 /**
  * Configuration class encapsulating Searcher environment.
@@ -16,15 +17,15 @@ use RequestContext;
  */
 class SearchConfig implements \Config {
 	// Constants for referring to various config values. Helps prevent fat-fingers
-	const INDEX_BASE_NAME = 'CirrusSearchIndexBaseName';
-	const PREFIX_IDS = 'CirrusSearchPrefixIds';
-	const CIRRUS_VAR_PREFIX = 'wgCirrus';
+	public const INDEX_BASE_NAME = 'CirrusSearchIndexBaseName';
+	private const PREFIX_IDS = 'CirrusSearchPrefixIds';
+	private const CIRRUS_VAR_PREFIX = 'wgCirrus';
 
-	// Magic word to tell the SearchConfig to translate INDEX_BASE_NAME into wfWikiID()
-	const WIKI_ID_MAGIC_WORD = '__wikiid__';
+	// Magic word to tell the SearchConfig to translate INDEX_BASE_NAME into WikiMap::getCurrentWikiId()
+	public const WIKI_ID_MAGIC_WORD = '__wikiid__';
 
-	/** @static string[] non cirrus vars to load when loading external wiki config */
-	private static $nonCirrusVars = [
+	/** Non cirrus vars to load when loading external wiki config */
+	private const NON_CIRRUS_VARS = [
 		'wgLanguageCode',
 		'wgContentNamespaces',
 		'wgNamespacesToBeSearchedDefault',
@@ -68,7 +69,7 @@ class SearchConfig implements \Config {
 	 */
 	public function __construct( SearchProfileServiceFactoryFactory $searchProfileServiceFactoryFactory = null ) {
 		$this->source = new \GlobalVarConfig();
-		$this->wikiId = wfWikiID();
+		$this->wikiId = WikiMap::getCurrentWikiId();
 		// The only ability to mutate SearchConfig is via a protected method, setSource.
 		// As long as we have an instance of SearchConfig it must then be the hostConfig.
 		$this->hostConfig = static::class === self::class ? $this : new SearchConfig();
@@ -113,8 +114,8 @@ class SearchConfig implements \Config {
 	 */
 	public function isLocalWiki() {
 		// FIXME: this test is somewhat obscure (very indirect to say the least)
-		// problem is that testing $this->wikiId === wfWikiId() would not work
-		// properly during unit tests.
+		// problem is that testing $this->wikiId === WikiMap::getCurrentWikiId()
+		// would not work properly during unit tests.
 		return $this->source instanceof \GlobalVarConfig;
 	}
 
@@ -259,7 +260,7 @@ class SearchConfig implements \Config {
 	 * @return string[] list of "non-cirrus" var names
 	 */
 	public static function getNonCirrusConfigVarNames() {
-		return self::$nonCirrusVars;
+		return self::NON_CIRRUS_VARS;
 	}
 
 	/**

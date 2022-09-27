@@ -91,9 +91,7 @@ class LanguageDetectTest extends CirrusTestCase {
 			'CirrusSearchMockLanguage' => null,
 		];
 		$factory = new LanguageDetectorFactory( new HashSearchConfig( $config ) );
-		$actual = array_map( function ( $v ) {
-			return get_class( $v );
-		}, $factory->getDetectors() );
+		$actual = array_map( 'get_class', $factory->getDetectors() );
 		$this->assertEquals( $exepected, $actual );
 	}
 
@@ -102,6 +100,7 @@ class LanguageDetectTest extends CirrusTestCase {
 	 * lang1 is result with defaults (testTextCatDetector)
 	 * lang2 is result with non-defaults (testTextCatDetectorWithParams)
 	 *		see notes inline
+	 * @return array
 	 */
 	public function getLanguageTexts() {
 		return [
@@ -120,7 +119,7 @@ class LanguageDetectTest extends CirrusTestCase {
 		];
 	}
 
-	public function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 		$tc = new \ReflectionClass( 'TextCat' );
 		$classDir = dirname( $tc->getFileName() );

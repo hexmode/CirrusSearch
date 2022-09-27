@@ -216,7 +216,10 @@ class StepHelpers {
 	waitForOperations( operations, log = null, timeoutMs = null ) {
 		return Promise.coroutine( function* () {
 			if ( !timeoutMs ) {
-				timeoutMs = operations.reduce( ( total, v ) => total + ( v[ 0 ].match( /^upload/ ) ? 30000 : 10000 ), 0 );
+				timeoutMs = Math.max(
+					20000,
+					operations.reduce( ( total, v ) => total + ( v[ 0 ].match( /^upload/ ) ? 30000 : 10000 ), 0 )
+				);
 			}
 			const start = new Date();
 
@@ -241,9 +244,9 @@ class StepHelpers {
 					if ( ( operation === 'upload' || operation === 'uploadOverwrite' ) && title.substr( 0, 5 ) !== 'File:' ) {
 						title = 'File:' + title;
 					}
-					const expect = operation !== 'delete';
+					const expectExists = operation !== 'delete';
 					const exists = yield this.checkExists( title, revisionId );
-					if ( exists === expect ) {
+					if ( exists === expectExists ) {
 						if ( log ) {
 							log( title, done.length + 1 );
 						}

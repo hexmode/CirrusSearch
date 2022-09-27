@@ -10,9 +10,9 @@ use Wikimedia\Assert\Assert;
  * A boolean clause
  */
 class BooleanClause implements Visitable {
-	const MUST = 'MUST';
-	const SHOULD = 'SHOULD';
-	const MUST_NOT = 'MUST_NOT';
+	public const MUST = 'MUST';
+	public const SHOULD = 'SHOULD';
+	public const MUST_NOT = 'MUST_NOT';
 
 	/**
 	 * @var ParsedNode
@@ -28,7 +28,7 @@ class BooleanClause implements Visitable {
 	/**
 	 * @var bool true if the node is explicitly connected
 	 */
-	private $explicit = false;
+	private $explicit;
 
 	/**
 	 * @param ParsedNode $node

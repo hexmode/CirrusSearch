@@ -2,11 +2,14 @@
 
 namespace CirrusSearch\Query;
 
+use ArrayIterator;
 use CirrusSearch\CirrusIntegrationTestCase;
 use CirrusSearch\CrossSearchStrategy;
 use CirrusSearch\HashSearchConfig;
-use Wikimedia\Rdbms\IDatabase;
-use Wikimedia\Rdbms\LoadBalancer;
+use MediaWiki\DAO\WikiAwareEntity;
+use MediaWiki\Page\PageSelectQueryBuilder;
+use MediaWiki\Page\PageStore;
+use MediaWiki\Page\PageStoreRecord;
 
 /**
  * @covers \CirrusSearch\Query\InCategoryFeature
@@ -127,10 +130,9 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 	 * @dataProvider parseProvider
 	 */
 	public function testParse( ?array $expected, array $warnings, $term ) {
-		$this->mockDB();
 		$feature = new InCategoryFeature( new \HashConfig( [
 			'CirrusSearchMaxIncategoryOptions' => 2,
-		] ) );
+		] ), $this->mockPageStore() );
 		$this->assertFilter( $feature, $term, $expected, $warnings );
 		if ( $expected === null ) {
 			$this->assertNoResultsPossible( $feature, $term );
@@ -138,7 +140,7 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 	}
 
 	public function testCrossSearchStrategy() {
-		$feature = new InCategoryFeature( new HashSearchConfig( [] ) );
+		$feature = new InCategoryFeature( new HashSearchConfig( [] ), $this->mockPageStore() );
 
 		$this->assertCrossSearchStrategy( $feature, "incategory:foo", CrossSearchStrategy::allWikisStrategy() );
 		$this->assertCrossSearchStrategy( $feature, "incategory:foo|bar", CrossSearchStrategy::allWikisStrategy() );
@@ -147,42 +149,54 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 	}
 
 	/**
-	 * Injects a database that knows about a fake page with id of 2
+	 * Injects a PageStore that knows about a fake page with id of 2
 	 * for use in test cases.
+	 *
+	 * @return PageStore
 	 */
-	private function mockDB() {
-		$db = $this->createMock( IDatabase::class );
-		$db->expects( $this->any() )
-			->method( 'select' )
-			->with( 'page' )
-			->will( $this->returnCallback( function ( $table, $select, $where ) {
-				if ( isset( $where['page_id'] ) && $where['page_id'] === [ '2' ] ) {
-					return [ (object)[
-						'page_namespace' => NS_CATEGORY,
-						'page_title' => 'Cat2',
-						'page_id' => 2,
-					] ];
-				} else {
-					return [];
-				}
-			} ) );
-		$lb = $this->getMockBuilder( LoadBalancer::class )
-			->disableOriginalConstructor()
+	private function mockPageStore(): PageStore {
+		$pageStore = $this->createPartialMock( PageStore::class, [ 'newSelectQueryBuilder' ] );
+		$pageSelectQueryBuilder = $this->getMockBuilder( PageSelectQueryBuilder::class )
+			->setConstructorArgs(
+				[
+					$this->getServiceContainer()->getDBLoadBalancer()->getConnectionRef( DB_REPLICA ),
+					$pageStore
+				]
+			)
+			->onlyMethods( [ 'fetchPageRecords' ] )
 			->getMock();
-		$lb->expects( $this->any() )
-			->method( 'getConnection' )
-			->will( $this->returnValue( $db ) );
-		$lb->expects( $this->any() )
-			->method( 'getConnectionRef' )
-			->will( $this->returnValue( $db ) );
-		$lb->expects( $this->any() )
-			->method( 'getMaintenanceConnectionRef' )
-			->will( $this->returnValue( $db ) );
-		$this->setService( 'DBLoadBalancer', $lb );
+
+		$pageSelectQueryBuilder->method( 'fetchPageRecords' )->willReturnCallback(
+			static function () use ( $pageSelectQueryBuilder ) {
+				[ 'conds' => $conds ] = $pageSelectQueryBuilder->getQueryInfo();
+				if ( isset( $conds['page_id'] ) && $conds['page_id'][0] == '2' ) {
+					return new ArrayIterator( [
+						new PageStoreRecord(
+							(object)[
+								'page_namespace' => NS_CATEGORY,
+								'page_title' => 'Cat2',
+								'page_id' => 2,
+								'page_is_redirect' => false,
+								'page_is_new' => false,
+								'page_latest' => 0,
+								'page_touched' => 0,
+							],
+							WikiAwareEntity::LOCAL
+						)
+					] );
+				} else {
+					return new ArrayIterator( [] );
+				}
+			}
+		);
+
+		$pageStore->method( 'newSelectQueryBuilder' )
+			->willReturn( $pageSelectQueryBuilder );
+		return $pageStore;
 	}
 
 	public function testParsedValue() {
-		$feature = new InCategoryFeature( new HashSearchConfig( [], [ HashSearchConfig::FLAG_INHERIT ] ) );
+		$feature = new InCategoryFeature( new HashSearchConfig( [], [ HashSearchConfig::FLAG_INHERIT ] ), $this->mockPageStore() );
 		$this->assertParsedValue( $feature, 'incategory:test',
 			[ 'names' => [ 'test' ], 'pageIds' => [] ] );
 		$this->assertParsedValue( $feature, 'incategory:foo|bar',
@@ -194,8 +208,7 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 	}
 
 	public function testExpandedData() {
-		$this->mockDB();
-		$feature = new InCategoryFeature( new HashSearchConfig( [], [ HashSearchConfig::FLAG_INHERIT ] ) );
+		$feature = new InCategoryFeature( new HashSearchConfig( [], [ HashSearchConfig::FLAG_INHERIT ] ), $this->mockPageStore() );
 		$this->assertExpandedData( $feature, "incategory:test|id:2",
 			[ 'test', 'Cat2' ] );
 	}
@@ -204,7 +217,7 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 		$this->assertParsedValue(
 			new InCategoryFeature( new \HashConfig( [
 				'CirrusSearchMaxIncategoryOptions' => 2,
-			] ) ),
+			] ), $this->mockPageStore() ),
 			'incategory:a|b|c',
 			[ 'names' => [ 'a', 'b' ], 'pageIds' => [] ],
 			[ [ 'cirrussearch-feature-too-many-conditions', 'incategory', 2 ] ]
@@ -215,7 +228,7 @@ class InCategoryFeatureTest extends CirrusIntegrationTestCase {
 		$this->assertExpandedData(
 			new InCategoryFeature( new \HashConfig( [
 				'CirrusSearchMaxIncategoryOptions' => 2,
-			] ) ),
+			] ), $this->mockPageStore() ),
 			'incategory:id:23892835|id:23892834',
 			[],
 			[ [ 'cirrussearch-incategory-feature-no-valid-categories', 'incategory' ] ]

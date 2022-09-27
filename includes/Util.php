@@ -2,6 +2,8 @@
 
 namespace CirrusSearch;
 
+use Elastica\Index;
+use Elasticsearch\Endpoints\Indices\GetMapping;
 use IBufferingStatsdDataFactory;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
@@ -12,7 +14,9 @@ use Status;
 use Title;
 use UIDGenerator;
 use WebRequest;
+use WikiMap;
 use Wikimedia\Assert\Assert;
+use Wikimedia\IPUtils;
 
 /**
  * Random utility functions that don't have a better home
@@ -50,42 +54,11 @@ class Util {
 	 * by gender if need be (using Title::getNsText()).
 	 *
 	 * @param Title $title The page title to use
-	 * @return string
+	 * @return string|false
 	 */
 	public static function getNamespaceText( Title $title ) {
-		return strtr( $title->getNsText(), '_', ' ' );
-	}
-
-	/**
-	 * Check if too arrays are recursively the same.  Values are compared with != and arrays
-	 * are descended into.
-	 *
-	 * @param array $lhs one array
-	 * @param array $rhs the other array
-	 * @return bool are they equal
-	 */
-	public static function recursiveSame( $lhs, $rhs ) {
-		if ( array_keys( $lhs ) != array_keys( $rhs ) ) {
-			return false;
-		}
-		foreach ( $lhs as $key => $value ) {
-			if ( !isset( $rhs[ $key ] ) ) {
-				return false;
-			}
-			if ( is_array( $value ) ) {
-				if ( !is_array( $rhs[ $key ] ) ) {
-					return false;
-				}
-				if ( !self::recursiveSame( $value, $rhs[ $key ] ) ) {
-					return false;
-				}
-			} else {
-				if ( $value != $rhs[ $key ] ) {
-					return false;
-				}
-			}
-		}
-		return true;
+		$ret = $title->getNsText();
+		return is_string( $ret ) ? strtr( $ret, '_', ' ' ) : $ret;
 	}
 
 	/**
@@ -129,7 +102,7 @@ class Util {
 	 * that Cirrus always uses.
 	 *
 	 * @param string $type same as type parameter on PoolCounter::factory
-	 * @param UserIdentity|null $user the user
+	 * @param UserIdentity|null $user
 	 * @param callable $workCallback callback when pool counter is acquired.  Called with
 	 *  no parameters.
 	 * @param string|null $busyErrorMsg The i18n key to return when the queue
@@ -154,7 +127,7 @@ class Util {
 
 		$key = "$type:$wgCirrusSearchPoolCounterKey";
 
-		$errorCallback = function ( Status $status ) use ( $key, $busyErrorMsg ) {
+		$errorCallback = static function ( Status $status ) use ( $key, $busyErrorMsg ) {
 			/** @todo No good replacements for getErrorsArray */
 			$errors = $status->getErrorsArray();
 			$error = $errors[0][0];
@@ -301,7 +274,7 @@ class Util {
 	private static function getOnWikiBoostTemplates( SearchConfig $config ) {
 		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 		$cacheKey = $cache->makeGlobalKey( 'cirrussearch-boost-templates', $config->getWikiId() );
-		if ( $config->getWikiId() == wfWikiID() ) {
+		if ( $config->getWikiId() == WikiMap::getCurrentWikiId() ) {
 			// Local wiki we can fetch boost templates from system
 			// message
 			if ( self::$defaultBoostTemplates !== null ) {
@@ -313,7 +286,7 @@ class Util {
 			$templates = $cache->getWithSetCallback(
 				$cacheKey,
 				600,
-				function () {
+				static function () {
 					$source = wfMessage( 'cirrussearch-boost-templates' )->inContentLanguage();
 					if ( !$source->isDisabled() ) {
 						$lines = Util::parseSettingsInMessage( $source->plain() );
@@ -342,18 +315,15 @@ class Util {
 	 * level, defined by $wgCirrusSearchStripQuestionMarks. Strip all ?s, those
 	 * at word breaks, or only string-final. Ignore queries that are all
 	 * punctuation or use insource. Don't remove escaped \?s, but unescape them.
-	 * ¿ is not :punct:, hence $more_punct.
 	 *
 	 * @param string $term
-	 * @param string $strippingLevel
+	 * @param string $strippingLevel Either "all", "break", or "final"
 	 * @return string modified term, based on strippingLevel
 	 */
 	public static function stripQuestionMarks( $term, $strippingLevel ) {
-		// strip question marks
-		$more_punct = "[¿]";
 		if ( strpos( $term, 'insource:/' ) === false &&
 			 strpos( $term, 'intitle:/' ) === false &&
-			preg_match( "/^([[:punct:]]|\s|$more_punct)+$/", $term ) === 0
+			!preg_match( '/^[\p{P}\p{Z}]+$/u', $term )
 		) {
 			// FIXME: get rid of negative lookbehinds on (?<!\\\\)
 			// it may improperly transform \\? into \? instead of \\ and destroy properly escaped \
@@ -363,11 +333,11 @@ class Util {
 				$term = preg_replace( '/\\\\\?/', '?', $term );
 			} elseif ( $strippingLevel === 'break' ) {
 				// strip question marks at word boundaries
-				$term = preg_replace( '/(?<!\\\\)(\?)+(\PL|$)/', '$2', $term );
+				$term = preg_replace( '/(?<!\\\\)\?+(\PL|$)/', '$1', $term );
 				$term = preg_replace( '/\\\\\?/', '?', $term );
 			} elseif ( $strippingLevel === 'all' ) {
 				// strip all unescaped question marks
-				$term = preg_replace( '/(?<!\\\\)(\?)+/', ' ', $term );
+				$term = preg_replace( '/(?<!\\\\)\?+/', ' ', $term );
 				$term = preg_replace( '/\\\\\?/', '?', $term );
 			}
 		}
@@ -545,7 +515,7 @@ class Util {
 	 * @param bool $checkEmpty If false, emptyiness of result after $mapFn is called will not be
 	 * 				checked before setting on $destArray.  If true, it will, using Util::isEmpty.
 	 * 				Default: true
-	 * @return array $destArray
+	 * @return array
 	 */
 	public static function setIfDefined(
 		array $sourceArray,
@@ -578,5 +548,91 @@ class Util {
 			return new NullStatsdDataFactory();
 		}
 		return MediaWikiServices::getInstance()->getStatsdDataFactory();
+	}
+
+	/**
+	 * @param SearchConfig $config Configuration of the check
+	 * @param string $ip The address to check against, ipv4 or ipv6.
+	 * @param string $userAgent Http user agent of the request
+	 * @return bool True when the parameters appear to be a non-interactive use case.
+	 */
+	public static function looksLikeAutomation( SearchConfig $config, string $ip, string $userAgent ): bool {
+		// Does the user agent have an automation-like user agent, such as
+		// HeadlessChrome or a popular http client package for various
+		// languages?
+		$uaPattern = $config->get( 'CirrusSearchAutomationUserAgentRegex' );
+		if ( $uaPattern !== null ) {
+			$ret = preg_match( $uaPattern, $userAgent );
+			if ( $ret === 1 ) {
+				return true;
+			} elseif ( $ret === false ) {
+				LoggerFactory::getInstance( 'CirrusSearch' )->warning(
+					'Invalid regex provided in `CirrusSearchAutomationUserAgentRegex`.' );
+				return false;
+			}
+		}
+
+		// Does the ip address fall into a subnet known for automation?
+		$ranges = $config->get( 'CirrusSearchAutomationCIDRs' );
+		if ( IPUtils::isInRanges( $ip, $ranges ) ) {
+			return true;
+		}
+
+		// Default assumption that requests are interactive
+		return false;
+	}
+
+	/**
+	 * Recreation of Index::getMapping but with support for include_type_name.
+	 *
+	 * Should be removed once 7.x is the minimum supported version and all
+	 * callers have transitioned to includeTypeName === false.
+	 *
+	 * @param Index $index
+	 * @return array
+	 */
+	public static function getIndexMapping( Index $index ) {
+		// $index->getMapping() does not support passing include_type_name so we rely on low-level
+		// elasticsearch/elasticsearch endpoints
+		// It should be fine to remove this while we no longer support es6 which defaults this value
+		// to true.
+		$response = $index->requestEndpoint( ( new GetMapping() )->setParams( [ 'include_type_name' => 'false' ] ) );
+		$data = $response->getData();
+		// $data is single element array with the backing index name as key
+		$mapping = array_shift( $data );
+		return $mapping['mappings'] ?? [];
+	}
+
+	/**
+	 * If we're supposed to create raw result, create and return it,
+	 * or output it and finish.
+	 * @param mixed $result Search result data
+	 * @param WebRequest $request Request context
+	 * @param CirrusDebugOptions $debugOptions
+	 * @return string The new raw result.
+	 */
+	public static function processSearchRawReturn( $result, WebRequest $request,
+												   CirrusDebugOptions $debugOptions ) {
+		if ( $debugOptions->getCirrusExplainFormat() !== null ) {
+			$header = 'Content-type: text/html; charset=UTF-8';
+			$printer = new ExplainPrinter( $debugOptions->getCirrusExplainFormat() );
+			$result = $printer->format( $result );
+		} else {
+			$header = 'Content-type: application/json; charset=UTF-8';
+			if ( $result === null ) {
+				$result = '{}';
+			} else {
+				$result = json_encode( $result, JSON_PRETTY_PRINT );
+			}
+		}
+
+		if ( $debugOptions->isDumpAndDie() ) {
+			// When dumping the query we skip _everything_ but echoing the query.
+			\RequestContext::getMain()->getOutput()->disable();
+			$request->response()->header( $header );
+			echo $result;
+			exit();
+		}
+		return $result;
 	}
 }

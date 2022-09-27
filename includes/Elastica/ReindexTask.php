@@ -4,6 +4,7 @@ namespace CirrusSearch\Elastica;
 
 use Elastica\Client;
 use Elastica\Exception\ResponseException;
+use Elastica\Exception\RuntimeException;
 use Elastica\Request;
 use MediaWiki\Logger\LoggerFactory;
 
@@ -60,7 +61,7 @@ class ReindexTask {
 
 	/**
 	 * Delete the task
-	 * @return bool True if delete was successfull, false otherwise.
+	 * @return bool True if delete was successful, false otherwise.
 	 *  Throws Elastica NotFoundException for unknown task (already
 	 *  deleted?) or HttpException for communication failures.
 	 */
@@ -69,7 +70,7 @@ class ReindexTask {
 			throw new \Exception( 'Cannot delete in-progress task' );
 		}
 		$response =
-			$this->client->getIndex( '.tasks' )->getType( 'task' )->deleteById( $this->taskId );
+			$this->client->getIndex( '.tasks' )->deleteById( $this->taskId );
 
 		return $response->isOK();
 	}
@@ -98,7 +99,12 @@ class ReindexTask {
 
 		$response = $this->client->request( "_tasks/{$this->taskId}", Request::GET );
 		if ( !$response->isOK() ) {
-			throw new ResponseException( $this->client->getLastRequest(), $response );
+			$lastRequest = $this->client->getLastRequest();
+			if ( $lastRequest !== null ) {
+				throw new ResponseException( $lastRequest, $response );
+			} else {
+				throw new RuntimeException( "Client::getLastRequest() should not be null" );
+			}
 		}
 		$data = $response->getData();
 		$status = $data['task']['status'];
@@ -187,14 +193,14 @@ class ReindexTask {
 			$status['retries']['bulk'] += $slice['retries']['bulk'];
 			$status['retries']['search'] += $slice['retries']['search'];
 			$status['throttled_millis'] += $slice['throttled_millis'];
-			$status['requests_per_second'] += $slice['requests_per_second'] === - 1 ? INF
+			$status['requests_per_second'] += $slice['requests_per_second'] === -1 ? INF
 				: $slice['requests_per_second'];
 			$status['throttled_until_millis'] += min( $status['throttled_until_millis'],
 				$slice['throttled_until_millis'] );
 		}
 
 		if ( $status['requests_per_second'] === INF ) {
-			$status['requests_per_second'] = - 1;
+			$status['requests_per_second'] = -1;
 		}
 
 		return $status;

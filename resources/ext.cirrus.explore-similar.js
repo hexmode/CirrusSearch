@@ -10,12 +10,14 @@
 		return;
 	}
 
-	$.when( mw.loader.using(
-		[
+	$.when(
+		mw.loader.using( [
 			'mediawiki.api',
 			'mediawiki.template.mustache',
 			'ext.uls.common'
-		] ), $.ready )
+		] ),
+		$.ready
+	)
 		.then( function () {
 			return new mw.Api().loadMessagesIfMissing( [
 				'cirrussearch-explore-similar-related',
@@ -31,7 +33,7 @@
 			/**
 			 * CSS classes used in templates
 			 */
-			var cssClassPrefix = 'ext-cirrus__xplr',
+			var cssClassPrefix = 'mw-cirrus__xplr',
 				cssClasses = {
 					contentWrapper: cssClassPrefix + '__content-wrapper',
 					content: cssClassPrefix + '__content',
@@ -541,11 +543,11 @@
 				 * as well as all other Explore Similar items on the page.
 				 * Also Triggers the custom Explore Similar event.
 				 *
-				 * @param {Object} $template - Explore Similar template wrapped in jQuery object.
+				 * @param {Object} $exploreTemplate - Explore Similar template wrapped in jQuery object.
 				 */
-				function closeExploreSimilarItem( $template ) {
+				function closeExploreSimilarItem( $exploreTemplate ) {
 
-					var $activeButton = $template.find( '.' + cssClasses.activeButton + ', .' + cssClasses.activeSlowButton ),
+					var $activeButton = $exploreTemplate.find( '.' + cssClasses.activeButton + ', .' + cssClasses.activeSlowButton ),
 						$contentWrappers = $( '.' + cssClasses.contentWrapper );
 
 					clearExploreSimilarQueue();

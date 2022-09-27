@@ -2,32 +2,39 @@
 
 namespace CirrusSearch\BuildDocument;
 
+use CirrusSearch\CirrusTestCaseTrait;
 use CirrusSearch\Connection;
 use CirrusSearch\SearchConfig;
 use Elastica\Document;
-use IDatabase;
 use MediaWiki\Revision\RevisionStore;
 use ParserCache;
 use Title;
+use Wikimedia\Rdbms\IDatabase;
 use WikiPage;
 
 /**
  * @covers \CirrusSearch\BuildDocument\BuildDocument
  */
 class BuildDocumentTest extends \MediaWikiUnitTestCase {
+	use CirrusTestCaseTrait;
+
 	private function mockBuilder( Title $title ) {
 		// Would be nice if we could pass the makeId function instead of a whole SearchConfig
 		$config = new SearchConfig;
-		$connection = $this->mock( Connection::class );
+		$connection = $this->createMock( Connection::class );
 		$connection->method( 'getConfig' )
-			->will( $this->returnValue( $config ) );
-		$db = $this->mock( IDatabase::class );
-		$parserCache = $this->mock( ParserCache::class );
-		$revStore = $this->mock( RevisionStore::class );
+			->willReturn( $config );
+		$revStore = $this->createMock( RevisionStore::class );
 		$revStore->method( 'getTitle' )
-			->will( $this->returnValue( $title ) );
+			->willReturn( $title );
 
-		return new class( $connection, $db, $parserCache, $revStore ) extends BuildDocument {
+		return new class(
+			$connection,
+			$this->createMock( IDatabase::class ),
+			$this->createMock( ParserCache::class ),
+			$revStore,
+			$this->createCirrusSearchHookRunner()
+		) extends BuildDocument {
 			// Override create builders to avoid testing those implementations
 			protected function createBuilders( int $flags ): array {
 				return [ new class() implements PagePropertyBuilder {
@@ -51,16 +58,16 @@ class BuildDocumentTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testHappyPath() {
-		$title = $this->mock( Title::class );
-		$title->method( 'getLatestRevID' )->will( $this->returnValue( 42 ) );
+		$title = $this->createMock( Title::class );
+		$title->method( 'getLatestRevID' )->willReturn( 42 );
 		$pages = [];
 		foreach ( range( 0, 1 ) as $pageId ) {
-			$page = $this->mock( WikiPage::class );
-			$page->method( 'getId' )->will( $this->returnValue( $pageId ) );
-			$page->method( 'getTitle' )->will( $this->returnValue( $title ) );
-			$page->method( 'getLatest' )->will( $this->returnValue( 42 ) );
+			$page = $this->createMock( WikiPage::class );
+			$page->method( 'getId' )->willReturn( $pageId );
+			$page->method( 'getTitle' )->willReturn( $title );
+			$page->method( 'getLatest' )->willReturn( 42 );
 			// $pageId == 0 does not exist
-			$page->method( 'exists' )->will( $this->returnValue( (bool)$pageId ) );
+			$page->method( 'exists' )->willReturn( (bool)$pageId );
 			$pages[] = $page;
 		}
 
@@ -80,9 +87,4 @@ class BuildDocumentTest extends \MediaWikiUnitTestCase {
 		$this->assertTrue( $doc->get( 'phpunit_finalize' ) );
 	}
 
-	private function mock( $class ) {
-		return $this->getMockBuilder( $class )
-			->disableOriginalConstructor()
-			->getMock();
-	}
 }

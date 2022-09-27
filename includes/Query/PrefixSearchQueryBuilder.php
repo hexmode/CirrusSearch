@@ -9,20 +9,20 @@ use Elastica\Query\MatchQuery;
 use Elastica\Query\MultiMatch;
 
 /**
- *
  * Build a query suited for autocomplete on titles+redirects
  */
 class PrefixSearchQueryBuilder {
 	use QueryBuilderTraits;
 
 	/**
-	 * @param SearchContext $searchContext the search context
+	 * @param SearchContext $searchContext
 	 * @param string $term the original search term
 	 * @param array|null $variants list of variants
-	 * @throws \ApiUsageException if the query is too long
 	 */
 	public function build( SearchContext $searchContext, $term, $variants = null ) {
-		$this->checkTitleSearchRequestLength( $term );
+		if ( !$this->checkTitleSearchRequestLength( $term, $searchContext ) ) {
+			return;
+		}
 		$searchContext->setOriginalSearchTerm( $term );
 		$searchContext->setProfileContext( SearchProfileService::CONTEXT_PREFIXSEARCH );
 		$searchContext->addSyntaxUsed( 'prefix' );
@@ -38,7 +38,7 @@ class PrefixSearchQueryBuilder {
 	}
 
 	private function wordPrefixQuery( $term, $variants ) {
-		$buildMatch = function ( $searchTerm ) {
+		$buildMatch = static function ( $searchTerm ) {
 			$match = new MatchQuery();
 			// TODO: redirect.title?
 			$match->setField( 'title.word_prefix', [
@@ -62,7 +62,7 @@ class PrefixSearchQueryBuilder {
 	private function keywordPrefixQuery( $term, $variants, $weights ) {
 		// Elasticsearch seems to have trouble extracting the proper terms to highlight
 		// from the default query we make so we feed it exactly the right query to highlight.
-		$buildMatch = function ( $searchTerm, $weight ) use ( $weights ) {
+		$buildMatch = static function ( $searchTerm, $weight ) use ( $weights ) {
 			$query = new MultiMatch();
 			$query->setQuery( $searchTerm );
 			$query->setFields( [

@@ -31,7 +31,7 @@ use Elastica\Query\AbstractQuery;
 class InTitleFeature extends BaseRegexFeature {
 
 	/**
-	 * @var Escaper $escaper an escaper used to sanitize queries when not used as regular expression
+	 * @var Escaper an escaper used to sanitize queries when not used as regular expression
 	 *
 	 * TODO: do not rely on escaper here, this should be consistent with what the Parser does.
 	 * @see Filters::intitle()
@@ -68,7 +68,7 @@ class InTitleFeature extends BaseRegexFeature {
 	 *  string.
 	 */
 	protected function doApply( SearchContext $context, $key, $value, $quotedValue, $negated ) {
-		$filter = Filters::intitle( $context->escaper(), $quotedValue );
+		$filter = Filters::intitle( $context->escaper(), $quotedValue, $value !== $quotedValue );
 
 		return [ $filter, !$negated ];
 	}
@@ -79,7 +79,7 @@ class InTitleFeature extends BaseRegexFeature {
 	 * @return AbstractQuery|null
 	 */
 	protected function getNonRegexFilterQuery( KeywordFeatureNode $node, QueryBuildingContext $context ) {
-		return Filters::intitle( $this->escaper, $node->getQuotedValue() );
+		return Filters::intitle( $this->escaper, $node->getQuotedValue(), $node->getValue() !== $node->getQuotedValue() );
 	}
 
 	public function buildNonRegexHLFields( KeywordFeatureNode $node, QueryBuildingContext $context ) {

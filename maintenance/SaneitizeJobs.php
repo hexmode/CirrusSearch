@@ -5,9 +5,9 @@ namespace CirrusSearch\Maintenance;
 use CirrusSearch\Connection;
 use CirrusSearch\Job\CheckerJob;
 use CirrusSearch\MetaStore\MetaSaneitizeJobStore;
-use CirrusSearch\MetaStore\MetaStoreIndex;
 use CirrusSearch\Profile\SearchProfileService;
 use JobQueueGroup;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Push some sanitize jobs to the JobQueue
@@ -170,7 +170,7 @@ class SaneitizeJobs extends Maintenance {
 
 		$loopId = $jobInfo->has( 'sanitize_job_loop_id' ) ? $jobInfo->get( 'sanitize_job_loop_id' ) : 0;
 		$idsTodo = $this->maxId - $jobInfo->get( 'sanitize_job_id_offset' );
-		$loopEta = date( $fmt, time() + ( $idsTodo * $jobsRate ) );
+		$loopEta = date( $fmt, time() + ( $idsTodo * $idsRate ) );
 		$loopRestartMinTime = date( $fmt, $jobInfo->get( 'sanitize_job_last_loop' ) + $minLoopDuration );
 
 		$this->output( <<<EOD
@@ -245,7 +245,7 @@ EOD
 			// instead run these jobs with concurrency limits to keep them
 			// spread over time. Insert jobs in the order we asked for them
 			// to be run to have some semblance of sanity.
-			usort( $jobs, function ( CheckerJob $job1, CheckerJob $job2 ) {
+			usort( $jobs, static function ( CheckerJob $job1, CheckerJob $job2 ) {
 				return $job1->getReadyTimestamp() - $job2->getReleaseTimestamp();
 			} );
 			JobQueueGroup::singleton()->push( $jobs );
@@ -281,29 +281,30 @@ EOD
 
 		$this->metaStores = [];
 		foreach ( $connections as $cluster => $connection ) {
-			if ( !MetaStoreIndex::cirrusReady( $connection ) ) {
+			$store = $this->getMetaStore( $connection );
+			if ( !$store->cirrusReady() ) {
 				$this->fatalError( "No metastore found in cluster $cluster" );
-			}
-			$store = new MetaStoreIndex( $connection, $this, $this->getSearchConfig() );
-			if ( !$store->versionIsAtLeast( [ 1, 0 ] ) ) {
-				$this->fatalError( 'Metastore version is too old, expected at least 1.0' );
 			}
 			$this->metaStores[$cluster] = $store->saneitizeJobStore();
 		}
 	}
 
 	private function initProfile() {
-		$res =
-			$this->getDB( DB_REPLICA )
-				->select( 'page', [ 'MIN(page_id) as min_id', 'MAX(page_id) as max_id' ], [], __METHOD__ );
-		$row = $res->next();
+		$res = $this->getDB( DB_REPLICA )
+			->newSelectQueryBuilder()
+			->select( [ 'min_id' => 'MIN(page_id)', 'max_id' => 'MAX(page_id)' ] )
+			->table( 'page' )
+			->caller( __METHOD__ )
+			->fetchResultSet();
+
+		$row = $res->fetchObject();
 		$this->minId = $row->min_id;
 		$this->maxId = $row->max_id;
 		$profiles =
 			$this->getSearchConfig()
 				->getProfileService()
 				->listExposedProfiles( SearchProfileService::SANEITIZER );
-		uasort( $profiles, function ( $a, $b ) {
+		uasort( $profiles, static function ( $a, $b ) {
 			return $a['max_wiki_size'] <=> $b['max_wiki_size'];
 		} );
 		$wikiSize = $this->maxId - $this->minId;
@@ -321,7 +322,7 @@ EOD
 	}
 
 	/**
-	 * @param string $jobName job name.
+	 * @param string $jobName
 	 * @return \Elastica\Document|null
 	 */
 	private function getJobInfo( $jobName ) {
@@ -410,8 +411,10 @@ EOD
 	/**
 	 * @param string $msg The error to display
 	 * @param int $exitCode die out using this int as the code
+	 * @return never
 	 */
 	public function fatalError( $msg, $exitCode = 1 ) {
+		// @phan-suppress-previous-line PhanTypeMissingReturn T240141
 		$date = new \DateTime();
 		parent::fatalError( $date->format( 'Y-m-d H:i:s' ) . " " . $msg, $exitCode );
 	}

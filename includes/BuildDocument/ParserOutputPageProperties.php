@@ -4,8 +4,10 @@ namespace CirrusSearch\BuildDocument;
 
 use CirrusSearch\CirrusSearch;
 use CirrusSearch\Search\CirrusIndexField;
+use CirrusSearch\SearchConfig;
 use Elastica\Document;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 use ParserCache;
 use ParserOutput;
 use Sanitizer;
@@ -20,15 +22,19 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 	private $parserCache;
 	/** @var bool */
 	private $forceParse;
+	/** @var SearchConfig */
+	private $config;
 
 	/**
 	 * @param ParserCache $cache Cache to retrieve ParserOutput from
 	 * @param bool $forceParse When true ignore the cache and re-parse
 	 *  wikitext.
+	 * @param SearchConfig $config
 	 */
-	public function __construct( ParserCache $cache, bool $forceParse ) {
+	public function __construct( ParserCache $cache, bool $forceParse, SearchConfig $config ) {
 		$this->parserCache = $cache;
 		$this->forceParse = $forceParse;
+		$this->config = $config;
 	}
 
 	/**
@@ -53,9 +59,10 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 	 *
 	 * @param Document $doc
 	 * @param Title $title
+	 * @throws BuildDocumentException
 	 */
 	public function finalize( Document $doc, Title $title ): void {
-		$page = new \WikiPage( $title );
+		$page = WikiPage::factory( $title );
 		// TODO: If parserCache is null here then we will parse for every
 		// cluster and every retry.  Maybe instead of forcing a parse, we could
 		// force a parser cache update during self::initialize?
@@ -71,6 +78,7 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 	 * @param ?ParserCache $parserCache Cache to fetch parser output from. When null the
 	 *  wikitext parser will be invoked.
 	 * @param CirrusSearch $engine SearchEngine implementation
+	 * @throws BuildDocumentException
 	 */
 	public function finalizeReal( Document $doc, WikiPage $page, ?ParserCache $parserCache, CirrusSearch $engine ): void {
 		$contentHandler = $page->getContentHandler();
@@ -79,9 +87,14 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 		// tied to WikiPage as well.
 		$output = $contentHandler->getParserOutputForIndexing( $page, $parserCache );
 
-		$fieldDefinitions = $contentHandler->getFieldsForSearchIndex( $engine );
+		if ( !$output ) {
+			throw new BuildDocumentException( "ParserOutput cannot be obtained." );
+		}
+
+		$fieldDefinitions = $engine->getSearchIndexFields();
 		$fieldContent = $contentHandler->getDataForSearchIndex( $page, $output, $engine );
 		$fieldContent = self::fixAndFlagInvalidUTF8InSource( $fieldContent, $page->getId() );
+		$fieldContent = $this->truncateFileContent( $fieldContent );
 		foreach ( $fieldContent as $field => $fieldData ) {
 			$doc->set( $field, $fieldData );
 			if ( isset( $fieldDefinitions[$field] ) ) {
@@ -113,7 +126,7 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 		) {
 			return null;
 		}
-		if ( $title->getNamespace() === 0 || false === strpos( $clean, ':' ) ) {
+		if ( $title->getNamespace() === 0 || strpos( $clean, ':' ) === false ) {
 			return $clean;
 		}
 		// There is no official way that namespaces work in display title, it
@@ -182,4 +195,25 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 		return $fieldDefinitions;
 	}
 
+	/**
+	 * Visible for testing only
+	 * @param int $maxLen
+	 * @param array $fieldContent
+	 * @return array
+	 */
+	public static function truncateFileTextContent( int $maxLen, array $fieldContent ): array {
+		if ( $maxLen >= 0 && isset( $fieldContent['file_text'] ) && strlen( $fieldContent['file_text'] ) > $maxLen ) {
+			$fieldContent['file_text'] = mb_strcut( $fieldContent['file_text'], 0, $maxLen );
+		}
+
+		return $fieldContent;
+	}
+
+	/**
+	 * @param array $fieldContent
+	 * @return array
+	 */
+	private function truncateFileContent( array $fieldContent ): array {
+		return self::truncateFileTextContent( $this->config->get( 'CirrusSearchMaxFileTextLength' ) ?: -1, $fieldContent );
+	}
 }

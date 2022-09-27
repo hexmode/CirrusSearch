@@ -26,7 +26,7 @@ class CompletionSearchProfileRepository implements SearchProfileRepository {
 	 */
 	public static function fromFile( $repoType, $repoName, $phpFile, SearchConfig $config ) {
 		// TODO: find a construct that does not require duplicating ArrayProfileRepository::fromFile
-		return new self( $repoType, $repoName, $config, function () use ( $phpFile ) {
+		return new self( $repoType, $repoName, $config, static function () use ( $phpFile ) {
 			return require $phpFile;
 		} );
 	}
@@ -39,13 +39,9 @@ class CompletionSearchProfileRepository implements SearchProfileRepository {
 	 * @return CompletionSearchProfileRepository
 	 */
 	public static function fromConfig( $repoType, $repoName, $configEntry, SearchConfig $config ) {
-		// TODO: find a construct that reuses ConfigProfileRepository
-		return new self( $repoType, $repoName, $config, function () use ( $configEntry, $config ) {
-			$profiles = $config->get( $configEntry );
-			if ( $profiles === null ) {
-				return [];
-			}
-			return $profiles;
+		return new self( $repoType, $repoName, $config, static function () use ( $configEntry, $config ) {
+			return ConfigProfileRepository::extractConfig( $configEntry, $config )
+				+ ConfigProfileRepository::extractAttribute( $configEntry );
 		} );
 	}
 
@@ -56,7 +52,7 @@ class CompletionSearchProfileRepository implements SearchProfileRepository {
 	 * @param callable $arrayLoader callable that resolves to an array of original profiles
 	 */
 	private function __construct( $repoType, $repoName, SearchConfig $config, callable $arrayLoader ) {
-		$this->wrapped = ArrayProfileRepository::lazyLoaded( $repoType, $repoName, function () use ( $arrayLoader, $config ) {
+		$this->wrapped = ArrayProfileRepository::lazyLoaded( $repoType, $repoName, static function () use ( $arrayLoader, $config ) {
 			$profiles = [];
 
 			$allowedFields = [ 'suggest' => true, 'suggest-stop' => true ];

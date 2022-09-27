@@ -10,7 +10,9 @@ use CirrusSearch\SearchConfig;
 use CirrusSearch\WarningCollector;
 use Config;
 use Elastica\Query\AbstractQuery;
-use Title;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageRecord;
+use MediaWiki\Page\PageStore;
 
 /**
  * Filters by one or more categories, specified either by name or by category
@@ -34,12 +36,18 @@ class InCategoryFeature extends SimpleKeywordFeature implements FilterQueryFeatu
 	 * @var int
 	 */
 	private $maxConditions;
+	/**
+	 * @var PageStore|null
+	 */
+	private $pageStore;
 
 	/**
 	 * @param Config $config
+	 * @param PageStore|null $pageStore
 	 */
-	public function __construct( Config $config ) {
+	public function __construct( Config $config, PageStore $pageStore = null ) {
 		$this->maxConditions = $config->get( 'CirrusSearchMaxIncategoryOptions' );
+		$this->pageStore = $pageStore;
 	}
 
 	/**
@@ -101,7 +109,8 @@ class InCategoryFeature extends SimpleKeywordFeature implements FilterQueryFeatu
 	 * @return array|false|null
 	 */
 	public function parseValue( $key, $value, $quotedValue, $valueDelimiter, $suffix, WarningCollector $warningCollector ) {
-		$categories = explode( '|', $value );
+		// en:Programming|id:3041512\
+		$categories = explode( '|', $value );// en:programming
 		if ( count( $categories ) > $this->maxConditions ) {
 			$warningCollector->addWarning(
 				'cirrussearch-feature-too-many-conditions',
@@ -125,11 +134,11 @@ class InCategoryFeature extends SimpleKeywordFeature implements FilterQueryFeatu
 					$pageIds[] = $pageId;
 				}
 			} else {
-				$names[] = $category;
+				$names[] = $category;// en:programming
 			}
 		}
 
-		return [ 'names' => $names, 'pageIds' => $pageIds ];
+		return [ 'names' => $names, 'pageIds' => $pageIds ];// en:programming
 	}
 
 	/**
@@ -149,17 +158,27 @@ class InCategoryFeature extends SimpleKeywordFeature implements FilterQueryFeatu
 	 * @return array
 	 */
 	private function doExpand( $key, array $parsedValue, WarningCollector $warningCollector ) {
-		$names = $parsedValue['names'];
+		$names = $parsedValue['names'];// en:programming
 		$pageIds = $parsedValue['pageIds'];
 
-		foreach ( Title::newFromIDs( $pageIds ) as $title ) {
-			$names[] = $title->getText();
+		$pageStore = $this->pageStore ?? MediaWikiServices::getInstance()->getPageStore();
+		$titles = $pageStore
+			->newSelectQueryBuilder()
+			->wherePageIds( $pageIds )
+			->caller( __METHOD__ )
+			->fetchPageRecords();
+
+		$titleFormatter = MediaWikiServices::getInstance()->getTitleFormatter();
+
+		/** @var PageRecord $title */
+		foreach ( $titles as $title ) {
+			$names[] = $titleFormatter->getText( $title );
 		}
 
 		if ( $names === [] ) {
 			$warningCollector->addWarning( 'cirrussearch-incategory-feature-no-valid-categories', $key );
 		}
-		return $names;
+		return $names;// en:programing
 	}
 
 	/**
@@ -173,7 +192,7 @@ class InCategoryFeature extends SimpleKeywordFeature implements FilterQueryFeatu
 		$filter = new \Elastica\Query\BoolQuery();
 
 		foreach ( $names as $name ) {
-			$filter->addShould( QueryHelper::matchPage( 'category.lowercase_keyword', $name ) );
+			$filter->addShould( QueryHelper::matchCategory( 'category.lowercase_keyword', $name ) );
 		}
 
 		return $filter;

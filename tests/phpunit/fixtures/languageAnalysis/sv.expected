@@ -4,17 +4,7 @@
             "type": "custom",
             "tokenizer": "standard",
             "filter": [
-                "lowercase",
-                "swedish_stop",
-                "swedish_stemmer",
-                "asciifolding_preserve",
-                "dedup_asciifolding"
-            ]
-        },
-        "text_search": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
+                "homoglyph_norm",
                 "lowercase",
                 "swedish_stop",
                 "swedish_stemmer",
@@ -24,22 +14,22 @@
         },
         "plain": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "short_text": {
@@ -72,12 +62,12 @@
         },
         "source_text_plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper_source_text"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper_source_text"
             ]
         },
         "suggest": {
@@ -106,45 +96,45 @@
         },
         "near_match": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "near_match_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "truncate_keyword",
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "word_prefix": {
@@ -178,6 +168,18 @@
             "filter": [
                 "lowercase"
             ]
+        },
+        "text_search": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "filter": [
+                "homoglyph_norm",
+                "lowercase",
+                "swedish_stop",
+                "swedish_stemmer",
+                "asciifolding_preserve",
+                "dedup_asciifolding"
+            ]
         }
     },
     "filter": {
@@ -210,6 +212,10 @@
         "truncate_keyword": {
             "type": "truncate",
             "length": 5000
+        },
+        "remove_empty": {
+            "type": "length",
+            "min": 1
         },
         "swedish_stop": {
             "type": "stop",
@@ -266,6 +272,12 @@
                 "(=>\\u0020",
                 ")=>\\u0020",
                 ":=>\\u0020"
+            ]
+        },
+        "dotted_I_fix": {
+            "type": "mapping",
+            "mappings": [
+                "\u0130=>I"
             ]
         }
     }

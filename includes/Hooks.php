@@ -5,10 +5,9 @@ namespace CirrusSearch;
 use ApiBase;
 use ApiMain;
 use ApiOpenSearch;
-use ApiUsageException;
-use CirrusSearch\Job\JobTraits;
 use CirrusSearch\Profile\SearchProfileServiceFactory;
 use CirrusSearch\Search\FancyTitleResultsType;
+use ConfigFactory;
 use DeferredUpdates;
 use Html;
 use ISearchResultSet;
@@ -17,7 +16,9 @@ use LinksUpdate;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Preferences\Hook\GetPreferencesHook;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\User\Hook\UserGetDefaultOptionsHook;
 use MediaWiki\User\UserIdentity;
 use OutputPage;
 use RequestContext;
@@ -46,11 +47,21 @@ use Xml;
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  */
-class Hooks {
+class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 	/**
 	 * @var string[] Destination of titles being moved (the ->getPrefixedDBkey() form).
 	 */
 	private static $movingTitles = [];
+
+	/** @var ConfigFactory */
+	private $configFactory;
+
+	/**
+	 * @param ConfigFactory $configFactory
+	 */
+	public function __construct( ConfigFactory $configFactory ) {
+		$this->configFactory = $configFactory;
+	}
 
 	/**
 	 * Hooked to call initialize after the user is set up.
@@ -145,7 +156,7 @@ class Hooks {
 	 */
 	private static function overrideMinimumShouldMatch( &$dest, WebRequest $request, $name ) {
 		$val = $request->getVal( $name );
-		if ( self::isMinimumShouldMatch( $val ) ) {
+		if ( $val !== null && self::isMinimumShouldMatch( $val ) ) {
 			$dest = $val;
 		}
 	}
@@ -189,7 +200,7 @@ class Hooks {
 		$lines = $cache->getWithSetCallback(
 			$cache->makeKey( 'cirrussearch-morelikethis-settings' ),
 			600,
-			function () {
+			static function () {
 				$source = wfMessage( 'cirrussearch-morelikethis-settings' )->inContentLanguage();
 				if ( $source && $source->isDisabled() ) {
 					return [];
@@ -199,7 +210,7 @@ class Hooks {
 		);
 
 		foreach ( $lines as $line ) {
-			if ( false === strpos( $line, ':' ) ) {
+			if ( strpos( $line, ':' ) === false ) {
 				continue;
 			}
 			list( $k, $v ) = explode( ':', $line, 2 );
@@ -238,6 +249,7 @@ class Hooks {
 					$wgCirrusSearchMoreLikeThisAllowedFields );
 				break;
 			}
+			// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset
 			if ( $wgCirrusSearchMoreLikeThisConfig['max_query_terms'] > $wgCirrusSearchMoreLikeThisMaxQueryTermsLimit ) {
 				$wgCirrusSearchMoreLikeThisConfig['max_query_terms'] = $wgCirrusSearchMoreLikeThisMaxQueryTermsLimit;
 			}
@@ -249,7 +261,7 @@ class Hooks {
 	 * @return bool True if $v is an integer percentage in the domain -100 <= $v <= 100, $v != 0
 	 * @todo minimum_should_match also supports combinations (3<90%) and multiple combinations
 	 */
-	private static function isMinimumShouldMatch( $v ) {
+	private static function isMinimumShouldMatch( string $v ) {
 		// specific integer count > 0
 		if ( ctype_digit( $v ) && $v != 0 ) {
 			return true;
@@ -280,6 +292,7 @@ class Hooks {
 			$request, 'cirrusMltMinDocFreq' );
 		self::overrideNumeric( $wgCirrusSearchMoreLikeThisConfig['max_doc_freq'],
 			$request, 'cirrusMltMaxDocFreq' );
+		// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset
 		self::overrideNumeric( $wgCirrusSearchMoreLikeThisConfig['max_query_terms'],
 			$request, 'cirrusMltMaxQueryTerms', $wgCirrusSearchMoreLikeThisMaxQueryTermsLimit );
 		self::overrideNumeric( $wgCirrusSearchMoreLikeThisConfig['min_term_freq'],
@@ -311,7 +324,7 @@ class Hooks {
 		$target = $page->getRedirectTarget();
 		if ( $target ) {
 			// DeferredUpdate so we don't end up racing our own page deletion
-			DeferredUpdates::addCallableUpdate( function () use ( $target ) {
+			DeferredUpdates::addCallableUpdate( static function () use ( $target ) {
 				JobQueueGroup::singleton()->push(
 					new Job\LinksUpdate( $target, [
 						'addedLinks' => [],
@@ -366,7 +379,7 @@ class Hooks {
 		$status = $version->get();
 		if ( $status->isOK() ) {
 			// We've already logged if this isn't ok and there is no need to warn the user on this page.
-			$software[ '[https://www.elastic.co/products/elasticsearch Elasticsearch]' ] = $status->getValue();
+			$software[ '[https://www.elastic.co/elasticsearch Elasticsearch]' ] = $status->getValue();
 		}
 	}
 
@@ -435,10 +448,28 @@ class Hooks {
 		} else {
 			$delay = $wgCirrusSearchUpdateDelay['default'];
 		}
-		$params += JobTraits::buildJobDelayOptions( Job\LinksUpdate::class, $delay );
+		$params += Job\LinksUpdate::buildJobDelayOptions( Job\LinksUpdate::class, $delay );
 		$job = new Job\LinksUpdate( $linksUpdate->getTitle(), $params );
 
-		JobQueueGroup::singleton()->push( $job );
+		JobQueueGroup::singleton()->lazyPush( $job );
+	}
+
+	/**
+	 * Hook into UploadComplete, overwritten files do not seem to trigger LinksUpdateComplete.
+	 * Since files do contain indexed metadata we need to refresh the search index when a file
+	 * is overwritten on an existing title.
+	 * @param \UploadBase $uploadBase
+	 */
+	public static function onUploadComplete( \UploadBase $uploadBase ) {
+		if ( $uploadBase->getTitle()->exists() ) {
+			JobQueueGroup::singleton()->push(
+				new Job\LinksUpdate( $uploadBase->getTitle(), [
+					'addedLinks' => [],
+					'removedLinks' => [],
+					'prioritize' => true
+				] )
+			);
+		}
 	}
 
 	/**
@@ -493,7 +524,6 @@ class Hooks {
 	 * @param string $term the original search term and all language variants
 	 * @param null|Title &$titleResult resulting match.  A Title if we found something, unchanged otherwise.
 	 * @return bool return false if we find something, true otherwise so mediawiki can try its default behavior
-	 * @throws ApiUsageException
 	 */
 	public static function onSearchGetNearMatch( $term, &$titleResult ) {
 		global $wgSearchType;
@@ -516,14 +546,7 @@ class Hooks {
 			$term = $title->getText();
 		}
 		$searcher->setResultsType( new FancyTitleResultsType( 'near_match' ) );
-		try {
-			$status = $searcher->nearMatchTitleSearch( $term );
-		} catch ( ApiUsageException $e ) {
-			if ( defined( 'MW_API' ) ) {
-				throw $e;
-			}
-			return true;
-		}
+		$status = $searcher->nearMatchTitleSearch( $term );
 		// There is no way to send errors or warnings back to the caller here so we have to make do with
 		// only sending results back if there are results and relying on the logging done at the status
 		// construction site to log errors.
@@ -545,7 +568,7 @@ class Hooks {
 	/**
 	 * Before we've moved a title from $title to $newTitle.
 	 * @param Title $title old title
-	 * @param Title $newTitle new title
+	 * @param Title $newTitle
 	 * @param User $user User who made the move
 	 */
 	public static function onTitleMove( Title $title, Title $newTitle, $user ) {
@@ -555,7 +578,7 @@ class Hooks {
 	/**
 	 * When we've moved a Title from A to B.
 	 * @param LinkTarget $title The old title
-	 * @param LinkTarget $newTitle The new title
+	 * @param LinkTarget $newTitle
 	 * @param UserIdentity $user User who made the move
 	 * @param int $oldId The page id of the old page.
 	 * @param int $redirId
@@ -579,16 +602,16 @@ class Hooks {
 		}
 
 		$conn = self::getConnection();
-		$oldIndexType = $conn->getIndexSuffixForNamespace( $title->getNamespace() );
-		$newIndexType = $conn->getIndexSuffixForNamespace( $newTitle->getNamespace() );
-		if ( $oldIndexType !== $newIndexType ) {
+		$oldIndexSuffix = $conn->getIndexSuffixForNamespace( $title->getNamespace() );
+		$newIndexSuffix = $conn->getIndexSuffixForNamespace( $newTitle->getNamespace() );
+		if ( $oldIndexSuffix !== $newIndexSuffix ) {
 			$title = Title::newFromLinkTarget( $title );
 			$job = new Job\DeletePages( $title, [
-				'indexType' => $oldIndexType,
+				'indexSuffix' => $oldIndexSuffix,
 				'docId' => self::getConfig()->makeId( $oldId )
 			] );
 			// Push the job after DB commit but cancel on rollback
-			wfGetDB( DB_MASTER )->onTransactionIdle( function () use ( $job ) {
+			wfGetDB( DB_PRIMARY )->onTransactionCommitOrIdle( static function () use ( $job ) {
 				JobQueueGroup::singleton()->lazyPush( $job );
 			}, __METHOD__ );
 		}
@@ -666,6 +689,7 @@ class Hooks {
 	 * @return SearchConfig
 	 */
 	private static function getConfig() {
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return MediaWikiServices::getInstance()
 			->getConfigFactory()
 			->makeConfig( 'CirrusSearch' );
@@ -726,9 +750,23 @@ class Hooks {
 			$wgOut->addModules( 'ext.cirrus.explore-similar' );
 		}
 
-		$wgOut->addJsConfigVars( [
+		$jsVars = [
 			'wgCirrusSearchRequestSetToken' => Util::getRequestSetToken(),
-		] );
+		];
+		// In theory UserTesting should always have been activated by now, but if
+		// somehow it wasn't we don't want to activate it now at the end of the request
+		// and report incorrect data.
+		if ( UserTestingStatus::hasInstance() ) {
+			$ut = UserTestingStatus::getInstance();
+			if ( $ut->isActive() ) {
+				$trigger = $ut->getTrigger();
+				$jsVars['wgCirrusSearchActiveUserTest'] = $trigger;
+				// bc for first deployment, some users will still have old js.
+				// Should be removed in following deployment.
+				$jsVars['wgCirrusSearchBackendUserTests'] = $trigger ? [ $trigger ] : [];
+			}
+		}
+		$wgOut->addJsConfigVars( $jsVars );
 
 		// This ignores interwiki results for now...not sure what do do with those
 		ElasticsearchIntermediary::setResultPages( [
@@ -737,7 +775,25 @@ class Hooks {
 		] );
 	}
 
-	public static function onGetPreferences( $user, &$prefs ) {
+	/**
+	 * @param array &$extraStats
+	 * @return void
+	 */
+	private static function addWordCount( array &$extraStats ): void {
+		$search = new CirrusSearch();
+
+		$status = $search->countContentWords();
+		if ( !$status->isOK() ) {
+			return;
+		}
+		$wordCount = $status->getValue();
+		if ( $wordCount !== null ) {
+			$extraStats['cirrussearch-article-words'] = $wordCount;
+		}
+	}
+
+	/** @inheritDoc */
+	public function onGetPreferences( $user, &$prefs ) {
 		$search = new CirrusSearch();
 		$profiles = $search->getProfiles( \SearchEngine::COMPLETION_PROFILE_TYPE, $user );
 		if ( empty( $profiles ) ) {
@@ -760,10 +816,7 @@ class Hooks {
 	 * @return string[]
 	 */
 	private static function autoCompleteOptionsForPreferences( array $profiles ): array {
-		$available = [];
-		foreach ( $profiles as $profile ) {
-			$available[] = $profile['name'];
-		}
+		$available = array_column( $profiles, 'name' );
 		// Order in which we propose comp suggest profiles
 		$preferredOrder = [
 			'fuzzy',
@@ -788,11 +841,10 @@ class Hooks {
 		return count( $messages ) >= 2 ? $messages : [];
 	}
 
-	public static function onUserGetDefaultOptions( &$defaultOptions ) {
-		$config = MediaWikiServices::getInstance()
-				->getConfigFactory()
-				->makeConfig( 'CirrusSearch' );
-		$defaultOptions['cirrussearch-pref-completion-profile'] = $config->get( 'CirrusSearchCompletionSettings' );
+	/** @inheritDoc */
+	public function onUserGetDefaultOptions( &$defaultOptions ) {
+		$defaultOptions['cirrussearch-pref-completion-profile'] =
+			$this->configFactory->makeConfig( 'CirrusSearch' )->get( 'CirrusSearchCompletionSettings' );
 	}
 
 	/**
@@ -806,7 +858,7 @@ class Hooks {
 		);
 		$container->defineService(
 			InterwikiResolver::SERVICE,
-			function ( MediaWikiServices $serviceContainer ) {
+			static function ( MediaWikiServices $serviceContainer ) {
 				$config = $serviceContainer->getConfigFactory()
 						->makeConfig( 'CirrusSearch' );
 				return $serviceContainer
@@ -815,14 +867,16 @@ class Hooks {
 			}
 		);
 		$container->defineService( SearchProfileServiceFactory::SERVICE_NAME,
-			function ( MediaWikiServices $serviceContainer ) {
+			static function ( MediaWikiServices $serviceContainer ) {
 				$config = $serviceContainer->getConfigFactory()
 					->makeConfig( 'CirrusSearch' );
 				return new SearchProfileServiceFactory(
 					$serviceContainer->getService( InterwikiResolver::SERVICE ),
-					/** @phan-suppress-next-line PhanTypeMismatchArgument $config is actually a SearchConfig */
+					/** @phan-suppress-next-line PhanTypeMismatchArgumentSuperType $config is actually a SearchConfig */
 					$config,
-					$serviceContainer->getLocalServerObjectCache()
+					$serviceContainer->getLocalServerObjectCache(),
+					new CirrusSearchHookRunner( $serviceContainer->getHookContainer() ),
+					$serviceContainer->getUserOptionsLookup()
 				);
 			}
 		);
@@ -849,15 +903,10 @@ class Hooks {
 	}
 
 	public static function onSpecialStatsAddExtra( &$extraStats, $context ) {
-		$search = new CirrusSearch();
+		self::addWordCount( $extraStats );
+	}
 
-		$status = $search->countContentWords();
-		if ( !$status->isOK() ) {
-			return;
-		}
-		$wordCount = $status->getValue();
-		if ( $wordCount !== null ) {
-			$extraStats['cirrussearch-article-words'] = $wordCount;
-		}
+	public static function onAPIQuerySiteInfoStatisticsInfo( &$extraStats ) {
+		self::addWordCount( $extraStats );
 	}
 }

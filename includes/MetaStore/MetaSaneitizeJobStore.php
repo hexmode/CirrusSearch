@@ -2,16 +2,17 @@
 
 namespace CirrusSearch\MetaStore;
 
-use CirrusSearch\Connection;
+use Elastica\Index;
+use WikiMap;
 
 class MetaSaneitizeJobStore implements MetaStore {
-	const METASTORE_TYPE = "sanitize";
+	public const METASTORE_TYPE = "sanitize";
 
-	/** @var Connection */
-	private $connection;
+	/** @var Index */
+	private $index;
 
-	public function __construct( Connection $connection ) {
-		$this->connection = $connection;
+	public function __construct( Index $index ) {
+		$this->index = $index;
 	}
 
 	/**
@@ -21,7 +22,7 @@ class MetaSaneitizeJobStore implements MetaStore {
 	public static function docId( $jobName ) {
 		return implode( '-', [
 			self::METASTORE_TYPE,
-			wfWikiId(),
+			WikiMap::getCurrentWikiId(),
 			$jobName
 		] );
 	}
@@ -37,9 +38,9 @@ class MetaSaneitizeJobStore implements MetaStore {
 			self::docId( $jobName ),
 			[
 				'type' => self::METASTORE_TYPE,
-				'wiki' => wfWikiID(),
+				'wiki' => WikiMap::getCurrentWikiId(),
 				'sanitize_job_loop_id' => 0,
-				'sanitize_job_wiki' => wfWikiID(), // Deprecated, use common wiki field
+				'sanitize_job_wiki' => WikiMap::getCurrentWikiId(), // Deprecated, use common wiki field
 				'sanitize_job_created' => time(),
 				'sanitize_job_updated' => time(),
 				'sanitize_job_last_loop' => null,
@@ -49,20 +50,20 @@ class MetaSaneitizeJobStore implements MetaStore {
 				'sanitize_job_ids_sent_total' => 0,
 				'sanitize_job_jobs_sent' => 0,
 				'sanitize_job_jobs_sent_total' => 0
-			]
+			],
+			'_doc'
 		);
-		$this->getType()->addDocument( $doc );
+		$this->index->addDocuments( [ $doc ] );
 		return $doc;
 	}
 
 	/**
-	 * @param string $jobName job name.
+	 * @param string $jobName
 	 * @return \Elastica\Document|null
 	 */
 	public function get( $jobName ) {
 		try {
-			// Try to fetch the JobInfo from one of the metastore
-			return $this->getType()->getDocument( self::docId( $jobName ) );
+			return $this->index->getDocument( self::docId( $jobName ) );
 		} catch ( \Elastica\Exception\NotFoundException $e ) {
 			return null;
 		}
@@ -79,22 +80,20 @@ class MetaSaneitizeJobStore implements MetaStore {
 		if ( $jobInfo->get( 'type' ) != self::METASTORE_TYPE ) {
 			throw new \Exception( "Wrong document type" );
 		}
-		$version = time();
-		$jobInfo->set( 'sanitize_job_updated', $version );
-		$jobInfo->setVersion( $version );
-		$jobInfo->setVersionType( 'external' );
-		$this->getType()->addDocument( $jobInfo );
+		$jobInfo->set( 'sanitize_job_updated', time() );
+		// Clear versioning info to prevent issues in the es 6->7 transition
+		$params = $jobInfo->getParams();
+		unset( $params['version'], $params['_version'] );
+		$jobInfo->setParams( $params );
+
+		$this->index->addDocuments( [ $jobInfo ] );
 	}
 
 	/**
 	 * @param string $jobName
 	 */
 	public function delete( $jobName ) {
-		$this->getType()->deleteById( self::docId( $jobName ) );
-	}
-
-	private function getType() {
-		return MetaStoreIndex::getElasticaType( $this->connection );
+		$this->index->deleteById( self::docId( $jobName ) );
 	}
 
 	/**

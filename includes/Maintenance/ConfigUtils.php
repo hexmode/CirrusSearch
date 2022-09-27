@@ -3,7 +3,8 @@
 namespace CirrusSearch\Maintenance;
 
 use Elastica\Client;
-use MWElasticUtils;
+use Elasticsearch\Endpoints;
+use MediaWiki\Extension\Elastica\MWElasticUtils;
 
 /**
  * This program is free software; you can redistribute it and/or modify
@@ -43,16 +44,25 @@ class ConfigUtils {
 
 	public function checkElasticsearchVersion() {
 		$this->outputIndented( 'Fetching Elasticsearch version...' );
-		$result = $this->client->request( '' );
-		$result = $result->getData();
+		$response = $this->client->request( '' );
+		if ( !$response->isOK() ) {
+			$this->fatalError( "Cannot fetch elasticsearch version: "
+				. $response->getError() );
+		}
+		$result = $response->getData();
 		if ( !isset( $result['version']['number'] ) ) {
 			$this->fatalError( 'unable to determine, aborting.' );
 		}
 		$result = $result[ 'version' ][ 'number' ];
 		$this->output( "$result..." );
-		if ( !preg_match( '/^(6.|5.6.)/', $result ) ) {
-			$this->output( "Not supported!\n" );
-			$this->fatalError( "Only Elasticsearch 6.x and 5.6.x are supported.  Your version: $result." );
+		if ( strpos( $result, '7.10' ) !== 0 ) {
+			if ( strpos( $result, '6.8' ) == 0 ) {
+				$this->output( "partially supported\n" );
+				$this->error( "You use a version of elasticsearch that is partially supported, you should upgrade to 7.10.x\n" );
+			} else {
+				$this->output( "Not supported!\n" );
+				$this->fatalError( "Only Elasticsearch 7.10.x is supported.  Your version: $result." );
+			}
 		} else {
 			$this->output( "ok\n" );
 		}
@@ -106,16 +116,14 @@ class ConfigUtils {
 	 * @return string[] the list of indices
 	 */
 	public function getAllIndicesByType( $typeName ) {
-		$found = null;
-		$response = $this->client->request( $typeName . '*' );
-		if ( $response->isOK() ) {
-			$found = array_keys( $response->getData() );
-		} else {
+		$response = $this->client->requestEndpoint( ( new Endpoints\Indices\Get() )
+			->setIndex( $typeName . '*' )
+			->setParams( [ 'include_type_name' => 'false' ] ) );
+		if ( !$response->isOK() ) {
 			$this->fatalError( "Cannot fetch index names for $typeName: "
 				. $response->getError() );
 		}
-		// @phan-suppress-next-line PhanTypeMismatchReturnNullable T240141
-		return $found;
+		return array_keys( $response->getData() );
 	}
 
 	/**
@@ -123,16 +131,17 @@ class ConfigUtils {
 	 * @return string[] list of modules or plugins
 	 */
 	private function scanModulesOrPlugins( $what ) {
-		$result = $this->client->request( '_nodes' );
-		$result = $result->getData();
+		$response = $this->client->request( '_nodes' );
+		if ( !$response->isOK() ) {
+			$this->fatalError( "Cannot fetch node state from cluster: "
+				. $response->getError() );
+		}
+		$result = $response->getData();
 		$availables = [];
 		$first = true;
 		foreach ( array_values( $result[ 'nodes' ] ) as $node ) {
-			$plugins = [];
 			// The plugins section may not exist, default to [] when not found.
-			foreach ( $node[$what] ?? [] as $plugin ) {
-				$plugins[] = $plugin[ 'name' ];
-			}
+			$plugins = array_column( $node[$what] ?? [], 'name' );
 			if ( $first ) {
 				$availables = $plugins;
 				$first = false;
@@ -216,6 +225,7 @@ class ConfigUtils {
 	/**
 	 * @param string $message
 	 * @param int $exitCode
+	 * @return never
 	 */
 	private function fatalError( $message, $exitCode = 1 ) {
 		if ( $this->out ) {
@@ -253,16 +263,14 @@ class ConfigUtils {
 		}
 
 		$response = $this->client->request( $indexName . '/_alias' );
-		if ( $response->isOK() ) {
-			// Only index names are listed as top level keys So if
-			// HEAD /$indexName returns HTTP 200 but $indexName is
-			// not a top level json key then it's an alias
-			return isset( $response->getData()[$indexName] );
-		} else {
+		if ( !$response->isOK() ) {
 			$this->fatalError( "Cannot determine if $indexName is an index: "
 				. $response->getError() );
 		}
-		return false;
+		// Only index names are listed as top level keys So if
+		// HEAD /$indexName returns HTTP 200 but $indexName is
+		// not a top level json key then it's an alias
+		return isset( $response->getData()[$indexName] );
 	}
 
 	/**
@@ -277,12 +285,10 @@ class ConfigUtils {
 			return [];
 		}
 		$response = $this->client->request( $aliasName . '/_alias' );
-		if ( $response->isOK() ) {
-			return array_keys( $response->getData() );
-		} else {
+		if ( !$response->isOK() ) {
 			$this->fatalError( "Cannot fetch indices with alias $aliasName: "
 				. $response->getError() );
 		}
-		return [];
+		return array_keys( $response->getData() );
 	}
 }

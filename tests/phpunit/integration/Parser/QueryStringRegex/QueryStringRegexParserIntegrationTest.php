@@ -5,7 +5,6 @@ namespace CirrusSearch\Parser\QueryStringRegex;
 use CirrusSearch\CirrusIntegrationTestCase;
 use CirrusSearch\HashSearchConfig;
 use CirrusSearch\Parser\QueryParser;
-use CirrusSearch\Parser\QueryParserFactory;
 use CirrusSearch\SearchConfig;
 
 /**
@@ -38,9 +37,6 @@ class QueryStringRegexParserIntegrationTest extends CirrusIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideRefImplQueries
-	 * @param array $expected
-	 * @param array $config
-	 * @param string $queryString
 	 * @throws \CirrusSearch\Parser\ParsedQueryClassifierException
 	 */
 	public function testRefImplFixtures( array $expected, $queryString, array $config = [] ) {
@@ -97,7 +93,7 @@ class QueryStringRegexParserIntegrationTest extends CirrusIntegrationTestCase {
 			$unittests[$test] = [
 				$data['expected'],
 				$data['query'],
-				isset( $data['config'] ) ? $data['config'] : []
+				$data['config'] ?? []
 			];
 		}
 		return $unittests;
@@ -117,7 +113,7 @@ class QueryStringRegexParserIntegrationTest extends CirrusIntegrationTestCase {
 	 * @return QueryParser
 	 */
 	public function buildParser( $config ) {
-		$parser = QueryParserFactory::newFullTextQueryParser( $config, $this->namespacePrefixParser() );
+		$parser = $this->createNewFullTextQueryParser( $config );
 		$this->assertInstanceOf( QueryStringRegexParser::class, $parser );
 		return $parser;
 	}

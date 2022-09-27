@@ -3,6 +3,7 @@
 namespace CirrusSearch;
 
 use Title;
+use WikiMap;
 
 /**
  * @covers \CirrusSearch\OtherIndexesUpdater
@@ -37,7 +38,7 @@ class OtherIndexesUpdaterTest extends CirrusIntegrationTestCase {
 
 		foreach ( $assertions as $title => $expectedIndices ) {
 			$found = array_map(
-				function ( $other ) {
+				static function ( $other ) {
 					return $other->getSearchIndex( 'default' );
 				},
 				OtherIndexesUpdater::getExternalIndexes( $config, Title::newFromText( $title ) )
@@ -81,7 +82,7 @@ class OtherIndexesUpdaterTest extends CirrusIntegrationTestCase {
 		foreach ( $assertions as $assertion ) {
 			list( $namespaces, $indices ) = $assertion;
 			$found = array_map(
-				function ( $other ) {
+				static function ( $other ) {
 					return $other->getSearchIndex( 'default' );
 				},
 				OtherIndexesUpdater::getExtraIndexesForNamespaces( $config, $namespaces )
@@ -109,9 +110,8 @@ class OtherIndexesUpdaterTest extends CirrusIntegrationTestCase {
 		$transport = $this->getMockBuilder( \Elastica\Transport\AbstractTransport::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$transport->expects( $this->any() )
-			->method( 'exec' )
-			->will( $this->returnValue( $response ) );
+		$transport->method( 'exec' )
+			->willReturn( $response );
 
 		$config = new HashSearchConfig( [
 			'CirrusSearchWikimediaExtraPlugin' => [
@@ -131,8 +131,8 @@ class OtherIndexesUpdaterTest extends CirrusIntegrationTestCase {
 
 		$conn = new Connection( $config );
 		$oi = $this->getMockBuilder( OtherIndexesUpdater::class )
-			->setConstructorArgs( [ $conn, $config, [], wfWikiId() ] )
-			->setMethods( [ 'runUpdates' ] )
+			->setConstructorArgs( [ $conn, $config, [], WikiMap::getCurrentWikiId() ] )
+			->onlyMethods( [ 'runUpdates' ] )
 			->getMock();
 		$oi->expects( $this->once() )
 			->method( 'runUpdates' )

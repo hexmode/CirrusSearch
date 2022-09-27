@@ -6,11 +6,7 @@ use CirrusSearch\CirrusTestCase;
 use CirrusSearch\HashSearchConfig;
 use CirrusSearch\Parser\BasicQueryClassifier;
 use CirrusSearch\Search\SearchQuery;
-use CirrusSearch\Search\SearchQueryBuilder;
 
-/**
- *
- */
 class BasicSearchQueryRouteTest extends CirrusTestCase {
 
 	/**
@@ -36,7 +32,7 @@ class BasicSearchQueryRouteTest extends CirrusTestCase {
 	 */
 	public function testGetScore() {
 		$route = new BasicSearchQueryRoute( SearchQuery::SEARCH_TEXT, [], [], 'foo', 0.4 );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( new HashSearchConfig( [] ), 'foo', $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( new HashSearchConfig( [] ), 'foo' )
 			->build();
 		$this->assertSame( 0.4, $route->score( $query ) );
 	}
@@ -85,13 +81,12 @@ class BasicSearchQueryRouteTest extends CirrusTestCase {
 	}
 
 	/**
-	 *
 	 * @covers \CirrusSearch\Dispatch\BasicSearchQueryRoute::score
 	 * @dataProvider provideTestNamespacesRouting
 	 */
 	public function testNamespacesRouting( $acceptedNs, $queryNs, $acceptRoute ) {
 		$route = new BasicSearchQueryRoute( SearchQuery::SEARCH_TEXT, $acceptedNs, [], 'foo', 1.0 );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( new HashSearchConfig( [] ), 'foo', $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( new HashSearchConfig( [] ), 'foo' )
 			->setInitialNamespaces( $queryNs )
 			->build();
 		$expectedScore = $acceptRoute ? 1.0 : 0.0;
@@ -139,7 +134,7 @@ class BasicSearchQueryRouteTest extends CirrusTestCase {
 	 */
 	public function testQueryClassRouting( $acceptedClasses, $query, $acceptRoute ) {
 		$route = new BasicSearchQueryRoute( SearchQuery::SEARCH_TEXT, [], $acceptedClasses, 'foo', 1.0 );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( new HashSearchConfig( [] ), $query, $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( new HashSearchConfig( [] ), $query )
 			->build();
 		$expectedScore = $acceptRoute ? 1.0 : 0.0;
 		$this->assertSame( $expectedScore, $route->score( $query ) );
@@ -168,7 +163,7 @@ class BasicSearchQueryRouteTest extends CirrusTestCase {
 	public function testNamespacesAndQueryClassRouting( $acceptedNs, $acceptedClasses, $queryNs, $query, $acceptRoute ) {
 		$route = new BasicSearchQueryRoute( SearchQuery::SEARCH_TEXT, $acceptedNs,
 			$acceptedClasses, 'foo', 1.0 );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( new HashSearchConfig( [] ), $query, $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( new HashSearchConfig( [] ), $query )
 			->setInitialNamespaces( $queryNs )
 			->build();
 		$expectedScore = $acceptRoute ? 1.0 : 0.0;

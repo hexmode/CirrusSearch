@@ -45,6 +45,7 @@ class Filters {
 			foreach ( $queries as $query ) {
 				$bool->addShould( $query );
 			}
+			$bool->setMinimumShouldMatch( 1 );
 			return $bool;
 		}
 	}
@@ -141,7 +142,7 @@ class Filters {
 	 * @return AbstractQuery
 	 */
 	public static function insource( Escaper $escaper, $value ) {
-		return self::insourceOrIntitle( $escaper, $value, function () {
+		return self::insourceOrIntitle( $escaper, $value, static function () {
 			return [ 'source_text.plain' ];
 		} );
 	}
@@ -151,11 +152,12 @@ class Filters {
 	 *
 	 * @param Escaper $escaper
 	 * @param string $value
+	 * @param bool $plain Only search plain fields
 	 * @return AbstractQuery
 	 */
-	public static function intitle( Escaper $escaper, $value ) {
-		return self::insourceOrIntitle( $escaper, $value, function ( $queryString ) {
-			if ( preg_match( '/[?*]/u', $queryString ) ) {
+	public static function intitle( Escaper $escaper, $value, $plain = false ) {
+		return self::insourceOrIntitle( $escaper, $value, static function ( $queryString ) use ( $plain ) {
+			if ( $plain || preg_match( '/[?*]/u', $queryString ) ) {
 				return [ 'title.plain', 'redirect.title.plain' ];
 			} else {
 				return [ 'title', 'title.plain', 'redirect.title', 'redirect.title.plain' ];

@@ -101,7 +101,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			$this->createMock( SearcherFactory::class ),
 			$results,
 			new MSearchResponses( [], [] ),
-			$this->namespacePrefixParser()
+			$this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner()
 		);
 		$this->assertEquals( [ 'A', 'B', 'C', 'D', 'E' ], $this->execOrder );
 	}
@@ -121,7 +122,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			$this->createMock( SearcherFactory::class ),
 			$results,
 			new MSearchResponses( [], [] ),
-			$this->namespacePrefixParser()
+			$this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner()
 		);
 		$this->assertEquals( [ 'A' ], $this->execOrder );
 	}
@@ -194,7 +196,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			$this->createMock( SearcherFactory::class ),
 			$results,
 			new MSearchResponses( [], [] ),
-			$this->namespacePrefixParser()
+			$this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner()
 		);
 		$expected = [
 			'wgCirrusSearchFallback' => [
@@ -213,7 +216,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 	}
 
 	public static function fallbackStatusCb( FallbackStatus $status ): callable {
-		return function ( FallbackRunnerContext $context ) use ( $status ) {
+		return static function ( FallbackRunnerContext $context ) use ( $status ) {
 			return $status;
 		};
 	}
@@ -229,8 +232,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 
 			/**
 			 * @param int $prio
-			 * @param $rewritteCallback
-			 * @param $metrics
+			 * @param callable|null $rewritteCallback
+			 * @param array $metrics
 			 */
 			public function __construct(
 				$prio,
@@ -254,7 +257,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			}
 
 			/**
-			 * @param CirrusSearchResultSet $firstPassResults
+			 * @param FallbackRunnerContext $context
 			 * @return float
 			 */
 			public function successApproximation( FallbackRunnerContext $context ) {
@@ -262,8 +265,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			}
 
 			/**
-			 * @param CirrusSearchResultSet $firstPassResults results of the initial query
-			 * @param CirrusSearchResultSet $previousSet results returned by previous fallback method
+			 * @param FallbackRunnerContext $context
 			 * @return FallbackStatus
 			 */
 			public function rewrite( FallbackRunnerContext $context ): FallbackStatus {
@@ -297,7 +299,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			'CirrusSearchFallbackProfile' => 'phrase_suggest_and_language_detection',
 		] );
 
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'foobars', $this->namespacePrefixParser() )
+		$query = SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'foobars',
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() )
 			->setAllowRewrite( true )
 			->setWithDYMSuggestion( true )
 			->build();
@@ -338,7 +341,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			$searcherFactory,
 			$initialResults,
 			new MSearchResponses( [], [] ),
-			$this->namespacePrefixParser()
+			$this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner()
 		);
 		$this->assertEquals( 2, $newResults->getTotalHits() );
 		$iwResults = $newResults->getInterwikiResults( \ISearchResultSet::INLINE_RESULTS );
@@ -362,7 +366,8 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 			$searcherFactory,
 			$initialResults,
 			new MSearchResponses( [], [] ),
-			$this->namespacePrefixParser()
+			$this->namespacePrefixParser(),
+			$this->createCirrusSearchHookRunner()
 		);
 		$this->assertSame( 0, $newResults->getTotalHits() );
 		$iwResults = $newResults->getInterwikiResults( \ISearchResultSet::INLINE_RESULTS );
@@ -398,7 +403,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 		$this->assertNotEmpty( $requests->getRequests() );
 		$mresponses = $requests->toMSearchResponses( [ $resp ] );
 		$this->assertSame( $rewritten, $runner->run( $this->createMock( SearcherFactory::class ), $inital, $mresponses,
-			$this->namespacePrefixParser() ) );
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() ) );
 
 		$runner = new FallbackRunner( [ $this->mockElasticSearchRequestFallbackMethod( $query, 0.0, $resp, null ) ] );
 		$requests = new MSearchRequests();
@@ -406,7 +411,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 		$this->assertEmpty( $requests->getRequests() );
 		$mresponses = $requests->failure( \Status::newFatal( 'error' ) );
 		$this->assertSame( $inital, $runner->run( $this->createMock( SearcherFactory::class ), $inital, $mresponses,
-			$this->namespacePrefixParser() ) );
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() ) );
 
 		$runner = new FallbackRunner( [
 			$this->mockElasticSearchRequestFallbackMethod( $query, 0.0, $resp, null ),
@@ -418,7 +423,7 @@ class FallbackRunnerTest extends CirrusIntegrationTestCase {
 		$this->assertFalse( $mresponses->hasResultsFor( 'fallback-1' ) );
 		$this->assertTrue( $mresponses->hasResultsFor( 'fallback-2' ) );
 		$this->assertSame( $rewritten, $runner->run( $this->createMock( SearcherFactory::class ), $inital, $mresponses,
-			$this->namespacePrefixParser() ) );
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() ) );
 	}
 
 	public function mockElasticSearchRequestFallbackMethod( $query, $approx, $expectedResponse, $rewritten ) {

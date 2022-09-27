@@ -170,4 +170,22 @@ class ResultsTypeTest extends CirrusTestCase {
 		$fullTextRes = new FullTextResultsType( new FetchPhaseConfigBuilder( new HashSearchConfig( [] ) ), false, $this->newTitleHelper() );
 		$this->assertFalse( $fullTextRes->transformElasticsearchResult( $res )->searchContainedSyntax() );
 	}
+
+	/**
+	 * @covers \CirrusSearch\Search\FullTextResultsType::getSourceFiltering
+	 */
+	public function testExtraFields() {
+		$fullTextRes = new FullTextResultsType( new FetchPhaseConfigBuilder( new HashSearchConfig( [] ) ),
+			true, $this->newTitleHelper(), [ 'extra_field1', 'extra_field2' ] );
+		$this->assertContains( 'extra_field1', $fullTextRes->getSourceFiltering() );
+		$this->assertContains( 'extra_field2', $fullTextRes->getSourceFiltering() );
+	}
+
+	public function testEmptyResultSet() {
+		$fullTextRes = new FullTextResultsType( new FetchPhaseConfigBuilder( new HashSearchConfig( [] ) ), true, $this->newTitleHelper() );
+		$results = $fullTextRes->createEmptyResult();
+		$this->assertSame( 0, $results->numRows() );
+		$this->assertFalse( $results->hasMoreResults() );
+	}
+
 }

@@ -3,7 +3,6 @@
 namespace CirrusSearch\Search;
 
 use BaseSearchResultSet;
-use Exception;
 use HtmlArmor;
 use LinkBatch;
 use SearchResult;
@@ -87,7 +86,7 @@ abstract class BaseCirrusSearchResultSet extends BaseSearchResultSet implements 
 	 *
 	 * @param \Elastica\ResultSet $resultSet Result set from which the titles come
 	 */
-	final private function preCacheContainedTitles( \Elastica\ResultSet $resultSet ) {
+	private function preCacheContainedTitles( \Elastica\ResultSet $resultSet ) {
 		// We can only pull in information about the local wiki
 		$lb = new LinkBatch;
 		foreach ( $resultSet->getResults() as $result ) {
@@ -109,38 +108,7 @@ abstract class BaseCirrusSearchResultSet extends BaseSearchResultSet implements 
 	 * @return CirrusSearchResultSet an empty result set
 	 */
 	final public static function emptyResultSet( $searchContainedSyntax = false ) {
-		return new class( $searchContainedSyntax ) extends BaseCirrusSearchResultSet {
-			/** @var bool */
-			private $searchContainedSyntax;
-
-			/**
-			 * @param bool $searchContainedSyntax
-			 */
-			public function __construct( $searchContainedSyntax ) {
-				$this->searchContainedSyntax = $searchContainedSyntax;
-			}
-
-			/**
-			 * @inheritDoc
-			 */
-			protected function transformOneResult( \Elastica\Result $result ) {
-				throw new Exception( "An empty ResultSet has nothing to transform" );
-			}
-
-			/**
-			 * @inheritDoc
-			 */
-			public function getElasticaResultSet() {
-				return null;
-			}
-
-			/**
-			 * @inheritDoc
-			 */
-			public function searchContainedSyntax() {
-				return $this->searchContainedSyntax;
-			}
-		};
+		return new EmptySearchResultSet( $searchContainedSyntax );
 	}
 
 	/**
@@ -182,7 +150,7 @@ abstract class BaseCirrusSearchResultSet extends BaseSearchResultSet implements 
 	 */
 	final public function extractTitles() {
 		return array_map(
-			function ( SearchResult $result ) {
+			static function ( SearchResult $result ) {
 				return $result->getTitle();
 			},
 			$this->extractResults() );
@@ -268,9 +236,6 @@ abstract class BaseCirrusSearchResultSet extends BaseSearchResultSet implements 
 	 * Count elements of an object
 	 * @link https://php.net/manual/en/countable.count.php
 	 * @return int The custom count as an integer.
-	 * </p>
-	 * <p>
-	 * The return value is cast to an integer.
 	 * @since 5.1.0
 	 */
 	final public function count(): int {

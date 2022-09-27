@@ -11,11 +11,6 @@ use WikiPage;
  * @covers \CirrusSearch\BuildDocument\DefaultPageProperties
  */
 class DefaultPagePropertiesIntegrationTest extends \MediaWikiIntegrationTestCase {
-	private function mock( $class ) {
-		return $this->getMockBuilder( $class )
-			->disableOriginalConstructor()
-			->getMock();
-	}
 
 	private function buildDoc( WikiPage $page ): ?Document {
 		$doc = new Document( null, [] );
@@ -30,11 +25,11 @@ class DefaultPagePropertiesIntegrationTest extends \MediaWikiIntegrationTestCase
 
 	public function testCreateTimestamp() {
 		$pageName = 'testCreateTimestamp' . mt_rand();
-		$page = new WikiPage( Title::newFromText( $pageName ) );
+		$page = WikiPage::factory( Title::newFromText( $pageName ) );
 
 		// Control time to ensure the revision timestamps differ
 		$currentTime = 12345;
-		\MWTimestamp::setFakeTime( function () use ( &$currentTime ) {
+		\MWTimestamp::setFakeTime( static function () use ( &$currentTime ) {
 			return $currentTime;
 		} );
 		try {

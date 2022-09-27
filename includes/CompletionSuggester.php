@@ -7,9 +7,10 @@ use CirrusSearch\Query\CompSuggestQueryBuilder;
 use CirrusSearch\Query\PrefixSearchQueryBuilder;
 use CirrusSearch\Search\CompletionResultsCollector;
 use CirrusSearch\Search\FancyTitleResultsType;
+use CirrusSearch\Search\MSearchRequests;
 use CirrusSearch\Search\SearchContext;
 use CirrusSearch\Search\SearchRequestBuilder;
-use Elastica\Exception\ExceptionInterface;
+use Closure;
 use Elastica\Index;
 use Elastica\Multi\Search as MultiSearch;
 use Elastica\Query;
@@ -74,25 +75,25 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	/**
 	 * @const string multisearch key to identify the comp suggest request
 	 */
-	const MSEARCH_KEY_SUGGEST = "suggest";
+	private const MSEARCH_KEY_SUGGEST = "suggest";
 
 	/**
 	 * @const string multisearch key to identify the prefix search request
 	 */
-	const MSEARCH_KEY_PREFIX = "prefix";
+	private const MSEARCH_KEY_PREFIX = "prefix";
 
 	/**
 	 * Search type (used for logs & timeout configs)
 	 */
-	const SEARCH_TYPE = 'comp_suggest';
+	private const SEARCH_TYPE = 'comp_suggest';
 
 	/**
-	 * @var integer maximum number of result (final)
+	 * @var int maximum number of result (final)
 	 */
 	private $limit;
 
 	/**
-	 * @var integer offset (final)
+	 * @var int offset (final)
 	 */
 	private $offset;
 
@@ -141,9 +142,11 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	 * @param User|null $user user for which this search is being performed.  Attached to slow request logs.
 	 * @param string|bool $index Base name for index to search from, defaults to $wgCirrusSearchIndexBaseName
 	 * @param string|null $profileName force the profile to use otherwise SearchProfileService defaults will be used
+	 * @param CirrusDebugOptions|null $debugOptions
 	 */
 	public function __construct( Connection $conn, $limit, $offset = 0, SearchConfig $config = null, array $namespaces = null,
-		User $user = null, $index = false, $profileName = null ) {
+		User $user = null, $index = false, $profileName = null,
+								 CirrusDebugOptions $debugOptions = null ) {
 		if ( $config === null ) {
 			// @todo connection has an embedded config ... reuse that? somehow should
 			// at least ensure they are the same.
@@ -158,8 +161,8 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 		$this->offset = $offset;
 		$this->indexBaseName = $index ?: $config->get( SearchConfig::INDEX_BASE_NAME );
 		$this->completionIndex = $this->connection->getIndex( $this->indexBaseName,
-			Connection::TITLE_SUGGEST_TYPE );
-		$this->searchContext = new SearchContext( $this->config, $namespaces );
+			Connection::TITLE_SUGGEST_INDEX_SUFFIX );
+		$this->searchContext = new SearchContext( $this->config, $namespaces, $debugOptions );
 
 		$profileDefinition = $this->config->getProfileService()
 			->loadProfile( SearchProfileService::COMPLETION, SearchProfileService::CONTEXT_DEFAULT, $profileName );
@@ -180,51 +183,57 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	 *
 	 * @param string $text Search term
 	 * @param string[]|null $variants Search term variants
-	 *  Usually issued via Language::autoConvertToAllVariants( $text ) for the content language.
+	 *  Usually issued via LanguageConverter::autoConvertToAllVariants( $text ) for the content language.
 	 * @return Status
 	 */
 	public function suggest( $text, $variants = null ) {
 		$suggestSearch = $this->getSuggestSearchRequest( $text, $variants );
-		$msearch = new MultiSearch( $this->connection->getClient() );
+		$mSearchRequests = new MSearchRequests();
+
 		if ( $suggestSearch !== null ) {
-			$msearch->addSearch( $suggestSearch, self::MSEARCH_KEY_SUGGEST );
+			$mSearchRequests->addRequest( self::MSEARCH_KEY_SUGGEST, $suggestSearch );
 		}
 
 		$prefixSearch = $this->getPrefixSearchRequest( $text, $variants );
 		if ( $prefixSearch !== null ) {
-			$msearch->addSearch( $prefixSearch, self::MSEARCH_KEY_PREFIX );
+			$mSearchRequests->addRequest( self::MSEARCH_KEY_PREFIX, $prefixSearch );
 		}
 
-		if ( empty( $msearch->getSearches() ) ) {
+		if ( !$mSearchRequests->getRequests() ) {
 			return Status::newGood( SearchSuggestionSet::emptySuggestionSet() );
 		}
+		$description = "{queryType} search for '{query}'";
+
+		if ( $this->searchContext->getDebugOptions()->isCirrusDumpQuery() ) {
+			return $mSearchRequests->dumpQuery( $description );
+		}
+
+		$multiSearch = new MultiSearch( $this->connection->getClient() );
+		$multiSearch->addSearches( $mSearchRequests->getRequests() );
 
 		$this->connection->setTimeout( $this->getClientTimeout( self::SEARCH_TYPE ) );
-		$result = Util::doPoolCounterWork(
-			'CirrusSearch-Completion',
-			$this->user,
-			function () use( $msearch, $text ) {
-				$log = $this->newLog( "{queryType} search for '{query}'", self::SEARCH_TYPE, [
-					'query' => $text,
-					'offset' => $this->offset,
-				] );
-				$this->start( $log );
-				try {
-					$results = $msearch->search();
-					if ( $results->hasError() ||
-						// Catches HTTP errors (ex: 5xx) not reported
-						// by hasError()
-						!$results->getResponse()->isOk()
-					) {
-						return $this->multiFailure( $results );
-					}
-					return $this->success( $this->processMSearchResponse( $results->getResultSets(), $log ) );
-				} catch ( ExceptionInterface $e ) {
-					return $this->failure( $e );
-				}
-			}
-		);
-		return $result;
+
+		$status = Util::doPoolCounterWork( 'CirrusSearch-Completion', $this->user,
+				function () use ( $multiSearch, $text, $description ) {
+					$log = $this->newLog( $description, self::SEARCH_TYPE, [
+						'query' => $text,
+						'offset' => $this->offset,
+					] );
+
+					$resultsTransformer = $this->getResultsTransformer( $log );
+
+					return $this->runMSearch( $multiSearch, $log, $this->connection,
+						$resultsTransformer );
+				} );
+
+		if ( $status->isOk() && $this->searchContext->getDebugOptions()->isCirrusDumpResult() ) {
+			$resultSets = $status->getValue()->getResultSets();
+			$responses = $mSearchRequests->toMSearchResponses( $resultSets );
+
+			return $responses->dumpResults( $description );
+		}
+
+		return $status;
 	}
 
 	/**
@@ -233,7 +242,8 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	 * @return SearchSuggestionSet
 	 */
 	private function processMSearchResponse( array $results, CompletionRequestLog $log ) {
-		$collector = new CompletionResultsCollector( $this->limit, $this->offset );
+		$collector = new CompletionResultsCollector(
+			$this->limit, $this->offset, $this->config->get( 'CirrusSearchCompletionBannedPageIds' ) );
 		$totalHits = $this->collectCompSuggestResults( $collector, $results, $log );
 		$totalHits += $this->collectPrefixSearchResults( $collector, $results, $log );
 		$log->setTotalHits( $totalHits );
@@ -265,12 +275,13 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	 * @param ResultSet[] $results
 	 * @param CompletionRequestLog $log
 	 * @return int
+	 * @throws \Exception
 	 */
 	private function collectPrefixSearchResults( CompletionResultsCollector $collector, array $results, CompletionRequestLog $log ) {
 		if ( !isset( $results[self::MSEARCH_KEY_PREFIX] ) ) {
 			return 0;
 		}
-		$indexName = $this->prefixSearchRequestBuilder->getPageType()->getIndex()->getName();
+		$indexName = $this->prefixSearchRequestBuilder->getIndex()->getName();
 		$prefixResults = $results[self::MSEARCH_KEY_PREFIX];
 		$totalHits = $prefixResults->getTotalHits();
 		$log->addIndex( $indexName );
@@ -308,7 +319,7 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	/**
 	 * @param string $text Search term
 	 * @param string[]|null $variants Search term variants
-	 *  Usually issued via Language::autoConvertToAllVariants( $text ) for the content language.
+	 *  Usually issued via LanguageConverter::autoConvertToAllVariants( $text ) for the content language.
 	 * @return Search|null
 	 */
 	private function getSuggestSearchRequest( $text, $variants ) {
@@ -330,7 +341,7 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	/**
 	 * @param string $term Search term
 	 * @param string[]|null $variants Search term variants
-	 *  Usually issued via Language::autoConvertToAllVariants( $text ) for the content language.
+	 *  Usually issued via LanguageConverter::autoConvertToAllVariants( $text ) for the content language.
 	 * @return Search|null
 	 */
 	private function getPrefixSearchRequest( $term, $variants ) {
@@ -341,7 +352,7 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 
 		foreach ( $namespaces as $k => $v ) {
 			// non-strict comparison, it can be strings
-			if ( $v == NS_MAIN ) {
+			if ( $v === NS_MAIN ) {
 				unset( $namespaces[$k] );
 			}
 		}
@@ -356,6 +367,10 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 		$prefixSearchContext = new SearchContext( $this->config, $namespaces );
 		$prefixSearchContext->setResultsType( new FancyTitleResultsType( 'prefix' ) );
 		$this->prefixSearchQueryBuilder->build( $prefixSearchContext, $term, $variants );
+		if ( !$prefixSearchContext->areResultsPossible() ) {
+			// $prefixSearchContext might contain warnings, but these are lost.
+			return null;
+		}
 		$this->prefixSearchRequestBuilder = new SearchRequestBuilder( $prefixSearchContext, $this->connection, $this->indexBaseName );
 		$this->prefixSearchRequestBuilder->setTimeout( $this->getTimeout( self::SEARCH_TYPE ) );
 		return $this->prefixSearchRequestBuilder->setLimit( $limit )
@@ -386,4 +401,20 @@ class CompletionSuggester extends ElasticsearchIntermediary {
 	public function getCompletionIndex() {
 		return $this->completionIndex;
 	}
+
+	/**
+	 * @param CompletionRequestLog $log
+	 * @return Closure|null
+	 */
+	private function getResultsTransformer( CompletionRequestLog $log ): ?Closure {
+		$resultsTransformer = null;
+		if ( !$this->searchContext->getDebugOptions()->isCirrusDumpResult() ) {
+			$resultsTransformer = function ( \Elastica\Multi\ResultSet $results ) use ( $log ) {
+				return $this->processMSearchResponse( $results->getResultSets(), $log );
+			};
+		}
+
+		return $resultsTransformer;
+	}
+
 }

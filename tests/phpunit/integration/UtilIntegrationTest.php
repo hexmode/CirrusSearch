@@ -6,6 +6,7 @@ use CirrusSearch\Profile\SearchProfileServiceFactoryFactory;
 use Config;
 use Language;
 use MediaWiki\MediaWikiServices;
+use WikiMap;
 
 /**
  * @covers \CirrusSearch\Util
@@ -22,7 +23,7 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 		] );
 		$services = MediaWikiServices::getInstance();
 		$services->resetServiceForTesting( 'MainWANObjectCache' );
-		$services->redefineService( 'MainWANObjectCache', function () {
+		$services->redefineService( 'MainWANObjectCache', static function () {
 			return new \WANObjectCache( [ 'cache' => new \HashBagOStuff() ] );
 		} );
 
@@ -84,11 +85,11 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 				'Featured' => 2,
 			],
 		];
-		$config = $this->getHashConfig( wfWikiID(), $configValues );
+		$config = $this->getHashConfig( WikiMap::getCurrentWikiId(), $configValues );
 
 		// On wiki config should override config templates
 		$cache = $this->makeLocalCache();
-		$this->putDataIntoCache( $cache, wfWikiID() );
+		$this->putDataIntoCache( $cache, WikiMap::getCurrentWikiId() );
 
 		$ru = Util::getDefaultBoostTemplates( $config );
 		$this->assertNotEquals( $configValues['CirrusSearchBoostTemplates'], $ru );
@@ -131,16 +132,16 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 		$this->setPrivateVar( Util::class, 'defaultBoostTemplates', null );
 
 		$cache = $this->makeLocalCache();
-		$config = $this->getHashConfig( wfWikiID() );
+		$config = $this->getHashConfig( WikiMap::getCurrentWikiId() );
 		$key = $cache->makeGlobalKey( 'cirrussearch-boost-templates', $config->getWikiId() );
 
 		// FIXME: we cannot really test the default value for $config
 		// with Util::getDefaultBoostTemplates(). It looks like
 		// MediaWikiServices initializes the current wiki SearchConfig
-		// when wfWikiID() == 'wiki' and then it's cached, the test
-		// framework seems to update the wiki name to wiki-unittest_
-		// making it impossible to test if we are running on the local
-		// wiki.
+		// when WikiMap::getCurrentWikiId() == 'wiki' and then it's
+		// cached, the test framework seems to update the wiki name to
+		// wiki-unittest_ making it impossible to test if we are running
+		// on the local wiki.
 		// resetting MediaWikiServices would be nice but it does not
 		// seem to be trivial.
 		$cur = Util::getDefaultBoostTemplates( $config );
@@ -160,7 +161,7 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 	 */
 	private function getMockCache() {
 		$mock = $this->getMockBuilder( \MessageCache::class )->disableOriginalConstructor()->getMock();
-		$mock->method( 'get' )->willReturnCallback( function ( $key, $useDB, Language $lang ) {
+		$mock->method( 'get' )->willReturnCallback( static function ( $key, $useDB, Language $lang ) {
 			return "This is $key in {$lang->getCode()}|100%";
 		} );
 		return $mock;
@@ -181,7 +182,7 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 		$mcInstance->setValue( $value );
 	}
 
-	public function tearDown() : void {
+	protected function tearDown(): void {
 		if ( method_exists( \MessageCache::class, 'destroyInstance' ) ) {
 			// reset cache so that our mock won't pollute other tests (in 1.33
 			// this is handled automatically by service reset)
@@ -195,6 +196,7 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 	 * @dataProvider provideTestIdentifyNamespace
 	 * @param string $namespace
 	 * @param int|bool $expected
+	 * @param string $method
 	 */
 	public function testIdentifyNamespace( $namespace, $expected, $method ) {
 		$this->setMwGlobals( [
@@ -264,8 +266,15 @@ class UtilIntegrationTest extends CirrusIntegrationTestCase {
 		SearchProfileServiceFactoryFactory $factoryFactory = null
 	): SearchConfig {
 		try {
-			return new HashSearchConfig( $config, $flags, $inherited,
-				$factoryFactory ?: $this->hostWikiSearchProfileServiceFactory() );
+			return new HashSearchConfig(
+				$config,
+				$flags,
+				$inherited,
+				$factoryFactory ?: $this->hostWikiSearchProfileServiceFactory(
+					null,
+					$this->getServiceContainer()->getUserOptionsLookup()
+				)
+			);
 		} catch ( \MWException $e ) {
 			$this->fail( $e->getMessage() );
 		}

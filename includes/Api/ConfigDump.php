@@ -2,10 +2,13 @@
 
 namespace CirrusSearch\Api;
 
+use ApiBase;
 use ApiResult;
 use CirrusSearch\Profile\SearchProfileService;
 use CirrusSearch\SearchConfig;
+use CirrusSearch\UserTestingEngine;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * Dumps CirrusSearch configuration for easy viewing.
@@ -25,10 +28,11 @@ use MediaWiki\MediaWikiServices;
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  */
-class ConfigDump extends \ApiBase {
+class ConfigDump extends ApiBase {
 	use ApiTrait;
 
-	public static $WHITE_LIST = [
+	public static $PUBLICLY_SHAREABLE_CONFIG_VARS = [
+		'CirrusSearchDisableUpdate',
 		'CirrusSearchServers',
 		'CirrusSearchConnectionAttempts',
 		'CirrusSearchSlowSearch',
@@ -77,7 +81,7 @@ class ConfigDump extends \ApiBase {
 		'CirrusSearchSimilarityProfile',
 		'CirrusSearchCrossProjectProfiles',
 		'CirrusSearchCrossProjectOrder',
-		'CirrusSearchCrossProjectSearchBlackList',
+		'CirrusSearchCrossProjectSearchBlockList',
 		'CirrusSearchExtraIndexBoostTemplates',
 		'CirrusSearchEnableCrossProjectSearch',
 		'CirrusSearchEnableAltLanguage',
@@ -143,14 +147,24 @@ class ConfigDump extends \ApiBase {
 
 	public function execute() {
 		$result = $this->getResult();
-		$this->addGlobals( $result );
-		$this->addConcreteNamespaceMap( $result );
-		$this->addProfiles( $result );
+		$props = array_flip( $this->extractRequestParams()[ 'prop' ] );
+		if ( isset( $props['globals'] ) ) {
+			$this->addGlobals( $result );
+		}
+		if ( isset( $props['namespacemap'] ) ) {
+			$this->addConcreteNamespaceMap( $result );
+		}
+		if ( isset( $props['profiles'] ) ) {
+			$this->addProfiles( $result );
+		}
+		if ( isset( $props['usertesting'] ) ) {
+			$this->addUserTesting( $result );
+		}
 	}
 
 	protected function addGlobals( ApiResult $result ) {
 		$config = $this->getConfig();
-		foreach ( self::$WHITE_LIST as $key ) {
+		foreach ( self::$PUBLICLY_SHAREABLE_CONFIG_VARS as $key ) {
 			if ( $config->has( $key ) ) {
 				$result->addValue( null, $key, $config->get( $key ) );
 			}
@@ -161,7 +175,8 @@ class ConfigDump extends \ApiBase {
 	 * Include a complete mapping from namespace id to index containing pages.
 	 *
 	 * Intended for external services/users that need to interact
-	 * with elasticsearch directly.
+	 * with elasticsearch or cirrussearch dumps directly.
+	 *
 	 * @param ApiResult $result Impl to write results to
 	 */
 	private function addConcreteNamespaceMap( ApiResult $result ) {
@@ -169,8 +184,8 @@ class ConfigDump extends \ApiBase {
 		$conn = $this->getCirrusConnection();
 		$indexBaseName = $conn->getConfig()->get( SearchConfig::INDEX_BASE_NAME );
 		foreach ( $nsInfo->getValidNamespaces() as $ns ) {
-			$indexType = $conn->getIndexSuffixForNamespace( $ns );
-			$indexName = $conn->getIndexName( $indexBaseName, $indexType );
+			$indexSuffix = $conn->getIndexSuffixForNamespace( $ns );
+			$indexName = $conn->getIndexName( $indexBaseName, $indexSuffix );
 			$result->addValue( 'CirrusSearchConcreteNamespaceMap', $ns, $indexName );
 		}
 	}
@@ -202,8 +217,30 @@ class ConfigDump extends \ApiBase {
 		}
 	}
 
+	protected function addUserTesting( ApiResult $result ) {
+		// UserTesting only automatically assigns test buckets during web requests.
+		// This api call is different from a typical search request though, this is
+		// used from non-search pages to find out what bucket to provide to a new
+		// autocomplete session.
+		$engine = UserTestingEngine::fromConfig( $this->getConfig() );
+		$status = $engine->decideTestByAutoenroll();
+		$result->addValue( null, 'CirrusSearchActiveUserTest',
+			$status->isActive() ? $status->getTrigger() : '' );
+	}
+
 	public function getAllowedParams() {
-		return [];
+		return [
+			'prop' => [
+				ParamValidator::PARAM_DEFAULT => 'globals|namespacemap|profiles',
+				ParamValidator::PARAM_TYPE => [
+					'globals',
+					'namespacemap',
+					'profiles',
+					'usertesting',
+				],
+				ParamValidator::PARAM_ISMULTI => true,
+			],
+		];
 	}
 
 	/**

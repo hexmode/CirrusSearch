@@ -17,10 +17,12 @@ class ArticlePage extends TitlePage {
 	}
 
 	/**
-	 * Performs a search using the search button top-right
+	 * Performs a search by submitting the search form. The search button
+	 * is harder to automate as it only appears when focused, going back
+	 * and forth between clickable and not-clickable in vector 2.
 	 */
-	click_search_top_right() {
-		browser.$( '#simpleSearch #searchButton' ).click();
+	submit_search_top_right() {
+		browser.$( '#searchform [name=search]' ).keys( '\n' );
 	}
 
 	has_search_suggestions() {
@@ -34,20 +36,20 @@ class ArticlePage extends TitlePage {
 	}
 
 	get_search_suggestions() {
-		const selector = '.suggestions .suggestions-results a.mw-searchSuggest-link';
+		const selector = '.cdx-search-result-title';
 		browser.waitUntil(
 			() => browser.$( selector ).isExisting(),
 			{ timeout: 10000 }
 		);
-		return this.collect_element_attribute( 'title', selector );
+		return this.collect_element_texts( selector );
 	}
 
 	set search_query_top_right( search ) {
-		browser.$( '#simpleSearch #searchInput' ).setValue( search );
+		browser.$( '#searchform [name=search]' ).setValue( search );
 	}
 
 	get search_query_top_right() {
-		return browser.getValue( '#simpleSearch #searchInput' );
+		return browser.getValue( '#searchform [name=search]' );
 	}
 }
 

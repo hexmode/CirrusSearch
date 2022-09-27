@@ -16,19 +16,7 @@ class SearchQuery {
 	 * Identifier for the fulltext SearchEngine entry point
 	 * @see \SearchEngine::searchText()
 	 */
-	const SEARCH_TEXT = 'searchText';
-
-	/**
-	 * Identifier for the near match SearchEngine entry point
-	 * @see \SearchEngine::getNearMatcher()
-	 */
-	const NEAR_MATCH = 'nearMatch';
-
-	/**
-	 * Identifier for the completionSearch SearchEngine entry point
-	 * @see \SearchEngine::completionSearch() and related endpoints
-	 */
-	const COMPLETION_SEARCH = 'completionSearch';
+	public const SEARCH_TEXT = 'searchText';
 
 	/**
 	 * @var ParsedQuery
@@ -68,6 +56,11 @@ class SearchQuery {
 	 * @var string
 	 */
 	private $sort;
+
+	/**
+	 * @var int|null
+	 */
+	private $randomSeed;
 
 	/**
 	 * @var string[]
@@ -111,12 +104,23 @@ class SearchQuery {
 	private $profileContextParameters;
 
 	/**
+	 * @var string[] list of extra fields to extract
+	 */
+	private $extraFieldsToExtract;
+
+	/**
+	 * @var bool
+	 */
+	private $provideAllSnippets;
+
+	/**
 	 * @param ParsedQuery $parsedQuery
 	 * @param int[] $initialNamespaces
 	 * @param CrossSearchStrategy $initialCrosswikiStrategy
 	 * @param \CirrusSearch\Query\Builder\ContextualFilter[] $contextualFilters
 	 * @param string $searchEngineEntryPoint
 	 * @param string $sort
+	 * @param int|null $randomSeed
 	 * @param string[] $forcedProfiles
 	 * @param int $offset
 	 * @param int $limit
@@ -125,6 +129,8 @@ class SearchQuery {
 	 * @param bool $withDYMSuggestion
 	 * @param bool $allowRewrite
 	 * @param string[] $profileContextParameters
+	 * @param string[] $extraFieldsToExtract
+	 * @param bool $provideAllSnippets
 	 * @see SearchQueryBuilder
 	 */
 	public function __construct(
@@ -134,6 +140,7 @@ class SearchQuery {
 		array $contextualFilters,
 		$searchEngineEntryPoint,
 		$sort,
+		$randomSeed,
 		array $forcedProfiles,
 		$offset,
 		$limit,
@@ -141,7 +148,9 @@ class SearchQuery {
 		SearchConfig $searchConfig,
 		$withDYMSuggestion,
 		$allowRewrite,
-		array $profileContextParameters
+		array $profileContextParameters,
+		array $extraFieldsToExtract,
+		bool $provideAllSnippets
 	) {
 		$this->parsedQuery = $parsedQuery;
 		$this->initialNamespaces = $initialNamespaces;
@@ -149,6 +158,7 @@ class SearchQuery {
 		$this->contextualFilters = $contextualFilters;
 		$this->searchEngineEntryPoint = $searchEngineEntryPoint;
 		$this->sort = $sort;
+		$this->randomSeed = $randomSeed;
 		$this->forcedProfiles = $forcedProfiles;
 		$this->offset = $offset;
 		$this->limit = $limit;
@@ -157,6 +167,8 @@ class SearchQuery {
 		$this->withDYMSuggestion = $withDYMSuggestion;
 		$this->allowRewrite = $allowRewrite;
 		$this->profileContextParameters = $profileContextParameters;
+		$this->extraFieldsToExtract = $extraFieldsToExtract;
+		$this->provideAllSnippets = $provideAllSnippets;
 	}
 
 	/**
@@ -223,6 +235,13 @@ class SearchQuery {
 	 */
 	public function getSort() {
 		return $this->sort;
+	}
+
+	/**
+	 * @return int|null
+	 */
+	public function getRandomSeed(): ?int {
+		return $this->randomSeed;
 	}
 
 	/**
@@ -320,5 +339,20 @@ class SearchQuery {
 	 */
 	public function getProfileContextParameters() {
 		return $this->profileContextParameters;
+	}
+
+	/**
+	 * @return string[]
+	 * @see \CirrusSearch\Search\FullTextResultsType
+	 */
+	public function getExtraFieldsToExtract(): array {
+		return $this->extraFieldsToExtract;
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function shouldProvideAllSnippets(): bool {
+		return $this->provideAllSnippets;
 	}
 }

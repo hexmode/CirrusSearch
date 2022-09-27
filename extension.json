@@ -28,7 +28,7 @@
 	"APIPropModules": {
 		"cirrusbuilddoc": "CirrusSearch\\Api\\QueryBuildDocument",
 		"cirrusdoc": "CirrusSearch\\Api\\QueryCirrusDoc",
-		"cirruscompsuggestbuilddoc": "\\CirrusSearch\\Api\\QueryCompSuggestBuildDoc"
+		"cirruscompsuggestbuilddoc": "CirrusSearch\\Api\\QueryCompSuggestBuildDoc"
 	},
 	"ConfigRegistry": {
 		"CirrusSearch": "CirrusSearch\\SearchConfig::newFromGlobals"
@@ -71,6 +71,8 @@
 				"resources/ext.cirrus.serp.js"
 			],
 			"dependencies": [
+				"mediawiki.router",
+				"mediawiki.util",
 				"mediawiki.Uri"
 			],
 			"styles": [],
@@ -113,20 +115,24 @@
 	"Hooks": {
 		"APIAfterExecute": "CirrusSearch\\Hooks::onAPIAfterExecute",
 		"ApiBeforeMain": "CirrusSearch\\Hooks::onApiBeforeMain",
+		"APIQuerySiteInfoStatisticsInfo": "CirrusSearch\\Hooks::onAPIQuerySiteInfoStatisticsInfo",
 		"ArticleDelete": "CirrusSearch\\Hooks::onArticleDelete",
 		"ArticleDeleteComplete": "CirrusSearch\\Hooks::onArticleDeleteComplete",
 		"ArticleRevisionVisibilitySet": "CirrusSearch\\Hooks::onRevisionDelete",
 		"ArticleUndelete": "CirrusSearch\\Hooks::onArticleUndelete",
 		"BeforeInitialize": "CirrusSearch\\Hooks::onBeforeInitialize",
-		"CirrusSearchAddQueryFeatures": "CirrusSearch\\Wikimedia\\ORESArticleTopicsHooks::onCirrusSearchAddQueryFeatures",
-		"CirrusSearchAnalysisConfig": "CirrusSearch\\Wikimedia\\ORESArticleTopicsHooks::onCirrusSearchAnalysisConfig",
-		"CirrusSearchSimilarityConfig": "CirrusSearch\\Wikimedia\\ORESArticleTopicsHooks::onCirrusSearchSimilarityConfig",
-		"GetPreferences": "CirrusSearch\\Hooks::onGetPreferences",
+		"CirrusSearchAddQueryFeatures": "CirrusSearch\\Wikimedia\\WeightedTagsHooks::onCirrusSearchAddQueryFeatures",
+		"CirrusSearchAnalysisConfig": "CirrusSearch\\Wikimedia\\WeightedTagsHooks::onCirrusSearchAnalysisConfig",
+		"CirrusSearchSimilarityConfig": "CirrusSearch\\Wikimedia\\WeightedTagsHooks::onCirrusSearchSimilarityConfig",
+		"GetPreferences": "default",
 		"LinksUpdateComplete": "CirrusSearch\\Hooks::onLinksUpdateCompleted",
 		"MediaWikiServices": "CirrusSearch\\Hooks::onMediaWikiServices",
 		"PrefixSearchExtractNamespace": "CirrusSearch\\Hooks::onPrefixSearchExtractNamespace",
 		"ResourceLoaderGetConfigVars": "CirrusSearch\\Hooks::onResourceLoaderGetConfigVars",
-		"SearchIndexFields": "CirrusSearch\\Wikimedia\\ORESArticleTopicsHooks::onSearchIndexFields",
+		"SearchIndexFields": [
+			"CirrusSearch\\Wikimedia\\WeightedTagsHooks::onSearchIndexFields",
+			"CirrusSearch\\Hooks\\CustomPageFields::onSearchIndexFields"
+		],
 		"SearchGetNearMatch": "CirrusSearch\\Hooks::onSearchGetNearMatch",
 		"ShowSearchHitTitle": "CirrusSearch\\Hooks::onShowSearchHitTitle",
 		"SoftwareInfo": "CirrusSearch\\Hooks::onSoftwareInfo",
@@ -135,11 +141,21 @@
 		"SpecialStatsAddExtra": "CirrusSearch\\Hooks::onSpecialStatsAddExtra",
 		"TitleMove": "CirrusSearch\\Hooks::onTitleMove",
 		"PageMoveComplete": "CirrusSearch\\Hooks::onPageMoveComplete",
-		"UserGetDefaultOptions": "CirrusSearch\\Hooks::onUserGetDefaultOptions"
+		"UploadComplete": "CirrusSearch\\Hooks::onUploadComplete",
+		"UserGetDefaultOptions": "default"
+	},
+	"HookHandlers": {
+		"default": {
+			"class": "CirrusSearch\\Hooks",
+			"services": [ "ConfigFactory" ]
+		}
 	},
 	"config": {
 		"CirrusSearchDefaultCluster": {
 			"value": "default"
+		},
+		"CirrusSearchDisableUpdate": {
+			"value": false
 		},
 		"CirrusSearchClusters": {
 			"value": {
@@ -150,6 +166,13 @@
 		},
 		"CirrusSearchWriteClusters": {
 			"value": null
+		},
+		"CirrusSearchWriteIsolateClusters": {
+			"value": null
+		},
+		"CirrusSearchElasticaWritePartitionCounts": {
+			"description": "Mapping from writable cluster name to number of partitions. Defaults to 1 if not set.",
+			"value": []
 		},
 		"CirrusSearchPrivateClusters": {
 			"value": null
@@ -165,10 +188,10 @@
 		},
 		"CirrusSearchShardCount": {
 			"value": {
-				"content": 4,
-				"general": 4,
-				"archive": 4,
-				"titlesuggest": 4
+				"content": 1,
+				"general": 1,
+				"archive": 1,
+				"titlesuggest": 1
 			}
 		},
 		"CirrusSearchReplicas": {
@@ -198,6 +221,9 @@
 		"CirrusSearchQueryStringMaxDeterminizedStates": {
 			"value": null
 		},
+		"CirrusSearchQueryStringMaxWildcards": {
+			"value": 3
+		},
 		"CirrusSearchNamespaceMappings": {
 			"value": [],
 			"merge_strategy": "array_plus"
@@ -205,9 +231,6 @@
 		"CirrusSearchExtraIndexes": {
 			"value": [],
 			"merge_strategy": "array_plus"
-		},
-		"CirrusSearchExtraIndexClusterBlacklist": {
-			"value": []
 		},
 		"CirrusSearchExtraIndexBoostTemplates": {
 			"value": []
@@ -468,14 +491,14 @@
 		"CirrusSearchFeedbackLink": {
 			"value": false
 		},
-		"CirrusSearchDropDelayedJobsAfter": {
-			"value": 172800
-		},
 		"CirrusSearchWriteBackoffExponent": {
 			"value": 6
 		},
 		"CirrusSearchUserTesting": {
 			"value": []
+		},
+		"CirrusSearchActiveTest": {
+			"value": null
 		},
 		"CirrusSearchCompletionProfiles": {
 			"value": []
@@ -485,6 +508,9 @@
 		},
 		"CirrusSearchUseIcuFolding": {
 			"value": "default"
+		},
+		"CirrusSearchICUNormalizationUnicodeSetFilter": {
+			"value": null
 		},
 		"CirrusSearchICUFoldingUnicodeSetFilter": {
 			"value": null
@@ -527,7 +553,7 @@
 		"CirrusSearchEnableCrossProjectSearch": {
 			"value": false
 		},
-		"CirrusSearchCrossProjectSearchBlackList": {
+		"CirrusSearchCrossProjectSearchBlockList": {
 			"value": []
 		},
 		"CirrusSearchInterwikiPrefixOverrides": {
@@ -608,6 +634,9 @@
 		"CirrusSearchFiletypeAliases": {
 			"value": []
 		},
+		"CirrusSearchMaxFileTextLength": {
+			"value": -1
+		},
 		"CirrusSearchElasticQuirks": {
 			"value": []
 		},
@@ -639,13 +668,33 @@
 			"value": "elastic"
 		},
 		"CirrusSearchWMFExtraFeatures": {
-			"description": "Configuration for Wikimedia-spexific extra features.\n\n* ores_articletopics: search articles by topic.\n** build: include in the index definition",
+			"description": "Configuration for Wikimedia-spexific extra features.\n\n* weighted_tags: multi purpose tag search.\n** build: include in the index definition",
 			"value": {
-				"ores_articletopics": {
+				"weighted_tags": {
 					"build": false,
 					"use": false
 				}
 			}
+		},
+		"CirrusSearchCompletionBannedPageIds": {
+			"description": "Set of page ids to never return in completion search",
+			"value": []
+		},
+		"CirrusSearchAutomationUserAgentRegex": {
+			"description": "Regular expression used to identify http user agents of automated requests",
+			"value": null
+		},
+		"CirrusSearchAutomationCIDRs": {
+			"description": "List of CIDR strings used to identify automated requests",
+			"value": []
+		},
+		"CirrusSearchCustomPageFields": {
+			"description": "Defines additional custom fields for page indexes",
+			"value": []
+		},
+		"CirrusSearchExtraFieldsInSearchResults": {
+			"description": "Defines extra fields to add to each result",
+			"value": []
 		}
 	},
 	"SearchMappings": {

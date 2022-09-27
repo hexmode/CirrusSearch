@@ -33,6 +33,7 @@ exports.config = {
 	botPassword: process.env.MEDIAWIKI_BOT_PASSWORD === undefined ?
 		'vagrant' :
 		process.env.MEDIAWIKI_BOT_PASSWORD,
+	baseUrl: 'http://cirrustest.wiki.local.wmftest.net:8080',
 	wikis: {
 		default: 'cirrustest',
 		cirrustest: {
@@ -86,7 +87,7 @@ exports.config = {
 	// directory is where your package.json resides, so `wdio` will be called from there.
 	//
 	specs: [
-		relPath( './integration/features/*.feature' )
+		process.env.CIRRUS_FEATURES || relPath( './integration/features/*.feature' )
 	],
 	cucumberOpts: {
 		tagsInTitle: true,
@@ -134,8 +135,8 @@ exports.config = {
 		//
 		browserName: 'chrome',
 		// Since Chrome v57 https://bugs.chromium.org/p/chromedriver/issues/detail?id=1625
-		chromeOptions: {
-			args: [ '--enable-automation', '--headless' ]
+		'goog:chromeOptions': {
+			args: [ '--enable-automation', '--remote-debugging-port=9222', '--headless', '--window-size=1200x800' ]
 		}
 	} ],
 	//
@@ -295,6 +296,7 @@ exports.config = {
 	// Gets executed after all workers got shut down and the process is about to exit. It is not
 	// possible to defer the end of the process using a promise.
 	onComplete: function () {
+		console.log( 'Attempting shutdown of forked tracker' );
 		// TODO: Is this method being called a guarantee, or should we handle signals to be sure?
 		try {
 			forkedTracker.send( { exit: true } );

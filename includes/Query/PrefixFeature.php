@@ -31,8 +31,7 @@ use Wikimedia\Assert\Assert;
  *   prefix:"California Cou"
  */
 class PrefixFeature extends SimpleKeywordFeature implements FilterQueryFeature {
-	/** @var string name of the keyword used in the syntax */
-	const KEYWORD = 'prefix';
+	private const KEYWORD = 'prefix';
 
 	/**
 	 * key value to set in the array returned by KeywordFeature::parsedValue()
@@ -42,7 +41,7 @@ class PrefixFeature extends SimpleKeywordFeature implements FilterQueryFeature {
 	 * are required.
 	 * @see KeywordFeature::parsedValue()
 	 */
-	const PARSED_NAMESPACES = 'parsed_namespaces';
+	public const PARSED_NAMESPACES = 'parsed_namespaces';
 
 	/**
 	 * @var NamespacePrefixParser

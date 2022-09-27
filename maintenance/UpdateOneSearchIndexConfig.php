@@ -41,10 +41,10 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	/**
 	 * @var string
 	 */
-	private $indexType;
+	private $indexSuffix;
 
 	/**
-	 * @var bool  Are we going to blow the index away and start from scratch?
+	 * @var bool Are we going to blow the index away and start from scratch?
 	 */
 	private $startOver;
 
@@ -67,11 +67,6 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	 * @var bool
 	 */
 	private $reindexAndRemoveOk;
-
-	/**
-	 * @var boolean are there too few replicas in the index we're making?
-	 */
-	private $tooFewReplicas = false;
 
 	/**
 	 * @var int number of scan slices to use when reindexing
@@ -145,11 +140,6 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	private $similarityConfig;
 
 	/**
-	 * @var string the name of the elastic type
-	 */
-	private $elasticType;
-
-	/**
 	 * @var bool true if the analysis config can be optimized
 	 */
 	private $safeToOptimizeAnalysisConfig;
@@ -158,7 +148,8 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 		parent::__construct();
 		$this->addDescription( "Update the configuration or contents of one search index. This always " .
 			"operates on a single cluster." );
-		$this->addOption( 'indexType', 'Index to update.  Either content or general.', true, true );
+		$this->addOption( 'indexSuffix', 'Index to update.  Either content or general.', false, true );
+		$this->addOption( 'indexType', 'BC form of --indexSuffix', false, true );
 		self::addSharedOptions( $this );
 	}
 
@@ -213,7 +204,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 
 		$utils = new ConfigUtils( $this->getConnection()->getClient(), $this );
 
-		$this->indexType = $this->getOption( 'indexType' );
+		$this->indexSuffix = $this->getBackCompatOption( 'indexSuffix', 'indexType' );
 		$this->startOver = $this->getOption( 'startOver', false );
 		$this->indexBaseName = $this->getOption( 'baseName',
 			$this->getSearchConfig()->get( SearchConfig::INDEX_BASE_NAME ) );
@@ -231,20 +222,24 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 		$this->masterTimeout = $wgCirrusSearchMasterTimeout;
 		$this->refreshInterval = $wgCirrusSearchRefreshInterval;
 
-		if ( $this->indexType === Connection::ARCHIVE_INDEX_TYPE &&
-			!$this->getConnection()->getSettings()->isPrivateCluster()
-		) {
-			$this->fatalError( "Not allowing {$this->indexType} on a non-private cluster" );
-			return true;
+		if ( $this->indexSuffix === Connection::ARCHIVE_INDEX_SUFFIX ) {
+			if ( !$this->getSearchConfig()->get( 'CirrusSearchEnableArchive' ) ) {
+				$this->output( "Warning: Not allowing {$this->indexSuffix}, archives are disabled\n" );
+				return true;
+			}
+			if ( !$this->getConnection()->getSettings()->isPrivateCluster() ) {
+				$this->output( "Warning: Not allowing {$this->indexSuffix} on a non-private cluster\n" );
+				return true;
+			}
 		}
 
 		$this->initMappingConfigBuilder();
 
 		try{
-			$indexTypes = $this->getConnection()->getAllIndexTypes( null );
-			if ( !in_array( $this->indexType, $indexTypes ) ) {
-				$this->fatalError( 'indexType option must be one of ' .
-					implode( ', ', $indexTypes ) );
+			$indexSuffixes = $this->getConnection()->getAllIndexSuffixes( null );
+			if ( !in_array( $this->indexSuffix, $indexSuffixes ) ) {
+				$this->fatalError( 'indexSuffix option must be one of ' .
+					implode( ', ', $indexSuffixes ) );
 			}
 
 			$utils->checkElasticsearchVersion();
@@ -262,7 +257,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 
 			$this->initAnalysisConfig();
 			$this->indexIdentifier = $utils->pickIndexIdentifierFromOption(
-				$this->getOption( 'indexIdentifier', 'current' ), $this->getIndexTypeName() );
+				$this->getOption( 'indexIdentifier', 'current' ), $this->getIndexAliasName() );
 			$this->validateIndex();
 			$this->validateAnalyzers();
 			$this->validateMapping();
@@ -303,11 +298,6 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	}
 
 	private function validateIndex() {
-		// $this->startOver || !$this->getIndex()->exists() are the conditions
-		// under which a new index will be created
-		$this->tooFewReplicas = ( $this->startOver || !$this->getIndex()->exists() )
-			&& $this->reindexAndRemoveOk;
-
 		if ( $this->startOver ) {
 			$this->createIndex( true, "Blowing away index to start over..." );
 		} elseif ( !$this->getIndex()->exists() ) {
@@ -361,7 +351,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 			$this->getIndex(), $this->getReplicaCount(), $this );
 		$validators[] = $this->getShardAllocationValidator();
 		$validators[] = new \CirrusSearch\Maintenance\Validators\MaxShardsPerNodeValidator(
-			$this->getIndex(), $this->indexType, $this->getMaxShardsPerNode(), $this );
+			$this->getIndex(), $this->getMaxShardsPerNode(), $this );
 		return $validators;
 	}
 
@@ -392,9 +382,6 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 			$this->optimizeIndexForExperimentalHighlighter,
 			$this->availablePlugins,
 			$this->mapping,
-			[
-				$this->elasticType => $this->getType(),
-			],
 			$this
 		);
 		$validator->printDebugCheckConfig( $this->printDebugCheckConfig );
@@ -410,12 +397,9 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 		// and we want the all index to stay with the old index during reindexing
 		$this->validateSpecificAlias();
 
-		if ( $this->indexType !== Connection::ARCHIVE_INDEX_TYPE ) {
+		if ( $this->indexSuffix !== Connection::ARCHIVE_INDEX_SUFFIX ) {
 			// Do not add the archive index to the global alias
 			$this->validateAllAlias();
-		}
-		if ( $this->tooFewReplicas ) {
-			$this->validateIndexSettings();
 		}
 	}
 
@@ -429,30 +413,25 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 			$this->getSearchConfig(),
 			$connection,
 			$connection,
-			$this->getType(),
-			$this->getOldType(),
-			$this->getShardCount(),
-			$this->getReplicaCount(),
-			$this->getMergeSettings(),
+			$this->getIndex(),
+			$this->getOldIndex(),
 			$this,
 			array_filter( explode( ',', $this->getOption( 'fieldsToDelete', '' ) ) )
 		);
 
 		$validator = new \CirrusSearch\Maintenance\Validators\SpecificAliasValidator(
 			$this->getConnection()->getClient(),
-			$this->getIndexTypeName(),
+			$this->getIndexAliasName(),
 			$this->getSpecificIndexName(),
 			$this->startOver,
 			$reindexer,
 			[
 				$this->reindexSlices,
-				$this->refreshInterval,
 				$this->reindexChunkSize,
 				$this->reindexAcceptableCountDeviation
 			],
 			$this->getIndexSettingsValidators(),
 			$this->reindexAndRemoveOk,
-			$this->tooFewReplicas,
 			$this
 		);
 		$status = $validator->validate();
@@ -467,7 +446,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 			$this->getIndexName(),
 			$this->getSpecificIndexName(),
 			$this->startOver,
-			$this->getIndexTypeName(),
+			$this->getIndexAliasName(),
 			$this
 		);
 		$status = $validator->validate();
@@ -518,15 +497,14 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 		if ( $this->phraseSuggestUseText ) {
 			$configFlags |= MappingConfigBuilder::PHRASE_SUGGEST_USE_TEXT;
 		}
-		switch ( $this->indexType ) {
-			case Connection::ARCHIVE_TYPE_NAME:
+		switch ( $this->indexSuffix ) {
+			case Connection::ARCHIVE_DOC_TYPE:
 				$mappingConfigBuilder = new ArchiveMappingConfigBuilder( $this->optimizeIndexForExperimentalHighlighter, $configFlags );
 				break;
 			default:
 				$mappingConfigBuilder = new MappingConfigBuilder( $this->optimizeIndexForExperimentalHighlighter, $configFlags );
 		}
 		$this->mapping = $mappingConfigBuilder->buildConfig();
-		$this->elasticType = $mappingConfigBuilder->getMainType();
 		$this->safeToOptimizeAnalysisConfig = $mappingConfigBuilder->canOptimizeAnalysisConfig();
 	}
 
@@ -535,7 +513,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	 */
 	public function getIndex() {
 		return $this->getConnection()->getIndex(
-			$this->indexBaseName, $this->indexType, $this->indexIdentifier );
+			$this->indexBaseName, $this->indexSuffix, $this->indexIdentifier );
 	}
 
 	/**
@@ -543,14 +521,14 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	 */
 	protected function getSpecificIndexName() {
 		return $this->getConnection()->getIndexName(
-			$this->indexBaseName, $this->indexType, $this->indexIdentifier );
+			$this->indexBaseName, $this->indexSuffix, $this->indexIdentifier );
 	}
 
 	/**
 	 * @return string name of the index type being updated
 	 */
-	protected function getIndexTypeName() {
-		return $this->getConnection()->getIndexName( $this->indexBaseName, $this->indexType );
+	protected function getIndexAliasName() {
+		return $this->getConnection()->getIndexName( $this->indexBaseName, $this->indexSuffix );
 	}
 
 	/**
@@ -561,19 +539,10 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	}
 
 	/**
-	 * Get the page type being updated by the search config.
-	 *
-	 * @return \Elastica\Type
+	 * @return \Elastica\Index
 	 */
-	protected function getType() {
-		return $this->getIndex()->getType( $this->elasticType );
-	}
-
-	/**
-	 * @return \Elastica\Type
-	 */
-	protected function getOldType() {
-		return $this->getConnection()->getIndexType( $this->indexBaseName, $this->indexType, $this->elasticType );
+	protected function getOldIndex() {
+		return $this->getConnection()->getIndex( $this->indexBaseName, $this->indexSuffix );
 	}
 
 	/**
@@ -583,7 +552,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	private function getMergeSettings() {
 		global $wgCirrusSearchMergeSettings;
 
-		return $wgCirrusSearchMergeSettings[$this->indexType]
+		return $wgCirrusSearchMergeSettings[$this->indexSuffix]
 			// If there aren't configured merge settings for this index type
 			// default to the content type.
 			?? $wgCirrusSearchMergeSettings['content']
@@ -595,14 +564,14 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	 * @return int Number of shards this index should have
 	 */
 	private function getShardCount() {
-		return $this->getConnection()->getSettings()->getShardCount( $this->indexType );
+		return $this->getConnection()->getSettings()->getShardCount( $this->indexSuffix );
 	}
 
 	/**
 	 * @return string Number of replicas this index should have. May be a range such as '0-2'
 	 */
 	private function getReplicaCount() {
-		return $this->getConnection()->getSettings()->getReplicaCount( $this->indexType );
+		return $this->getConnection()->getSettings()->getReplicaCount( $this->indexSuffix );
 	}
 
 	/**
@@ -610,7 +579,7 @@ class UpdateOneSearchIndexConfig extends Maintenance {
 	 *  node. -1 for unlimited.
 	 */
 	private function getMaxShardsPerNode() {
-		return $this->getConnection()->getSettings()->getMaxShardsPerNode( $this->indexType );
+		return $this->getConnection()->getSettings()->getMaxShardsPerNode( $this->indexSuffix );
 	}
 
 	private function initAnalysisConfig() {

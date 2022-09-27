@@ -13,6 +13,7 @@ use CirrusSearch\Sanity\QueueingRemediator;
 use CirrusSearch\Searcher;
 use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Job wrapper around Sanity\Checker
@@ -37,7 +38,7 @@ class CheckerJob extends CirrusGenericJob {
 	 * @const int max number of retries, 3 means that the job can be run at
 	 * most 4 times.
 	 */
-	const JOB_MAX_RETRIES = 3;
+	private const JOB_MAX_RETRIES = 3;
 
 	/**
 	 * Construct a new CherckerJob.
@@ -213,7 +214,10 @@ class CheckerJob extends CirrusGenericJob {
 		}
 
 		$multiClusterRemediator = new MultiClusterRemediatorHelper( $perClusterRemediators, $perClusterBufferedRemediators,
-			new AllClustersQueueingRemediator( $this->getSearchConfig()->getClusterAssignment(), JobQueueGroup::singleton() ) );
+			new AllClustersQueueingRemediator(
+				$this->getSearchConfig()->getClusterAssignment(),
+				JobQueueGroup::singleton()
+			) );
 
 		$ranges = array_chunk( range( $from, $to ), $batchSize );
 		while ( $pageIds = array_shift( $ranges ) ) {
@@ -256,7 +260,7 @@ class CheckerJob extends CirrusGenericJob {
 	 */
 	private static function makeIsOldClosure( $loopId, $numCycles ) {
 		$loopMod = $loopId % $numCycles;
-		return function ( \WikiPage $page ) use ( $numCycles, $loopMod ) {
+		return static function ( \WikiPage $page ) use ( $numCycles, $loopMod ) {
 			$pageIdMod = $page->getId() % $numCycles;
 			return $pageIdMod == $loopMod;
 		};
@@ -274,8 +278,9 @@ class CheckerJob extends CirrusGenericJob {
 			'cirrusSearchDeletePages',
 		];
 		$size = 0;
+		$jobQueueGroup = JobQueueGroup::singleton();
 		foreach ( $queues as $queueName ) {
-			$queue = JobQueueGroup::singleton()->get( $queueName );
+			$queue = $jobQueueGroup->get( $queueName );
 			$size += $queue->getSize();
 			$size += $queue->getDelayedCount();
 		}

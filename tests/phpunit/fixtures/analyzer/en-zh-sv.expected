@@ -1,8 +1,9 @@
 {
     "analyzer": {
         "en_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer",
                 "preserve_original_recorder",
@@ -10,23 +11,20 @@
                 "preserve_original",
                 "remove_empty"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_text": {
-            "type": "custom",
-            "tokenizer": "standard",
             "char_filter": [
                 "word_break_helper",
                 "kana_map"
@@ -40,11 +38,11 @@
                 "remove_empty",
                 "kstem",
                 "custom_stem"
-            ]
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "en_text_search": {
-            "type": "custom",
-            "tokenizer": "standard",
             "char_filter": [
                 "word_break_helper",
                 "kana_map"
@@ -58,57 +56,14 @@
                 "remove_empty",
                 "kstem",
                 "custom_stem"
-            ]
-        },
-        "zh_plain": {
-            "type": "custom",
+            ],
             "tokenizer": "standard",
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "zh_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ],
-            "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "zh_text": {
-            "type": "custom",
-            "tokenizer": "smartcn_tokenizer",
-            "char_filter": [
-                "stconvertfix",
-                "tsconvert"
-            ],
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ]
-        },
-        "zh_text_search": {
-            "type": "custom",
-            "tokenizer": "smartcn_tokenizer",
-            "char_filter": [
-                "stconvertfix",
-                "tsconvert"
-            ],
-            "filter": [
-                "smartcn_stop",
-                "icu_normalizer"
-            ]
+            "type": "custom"
         },
         "sv_plain": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer",
                 "preserve_original_recorder",
@@ -116,23 +71,20 @@
                 "preserve_original",
                 "remove_empty"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "sv_plain_search": {
-            "type": "custom",
-            "tokenizer": "standard",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "filter": [
                 "icu_normalizer"
             ],
-            "char_filter": [
-                "word_break_helper"
-            ]
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "sv_text": {
-            "type": "custom",
-            "tokenizer": "standard",
             "filter": [
                 "icu_normalizer",
                 "swedish_stop",
@@ -141,11 +93,11 @@
                 "sv_icu_folding",
                 "preserve_original",
                 "remove_empty"
-            ]
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
         "sv_text_search": {
-            "type": "custom",
-            "tokenizer": "standard",
             "filter": [
                 "icu_normalizer",
                 "swedish_stop",
@@ -154,65 +106,59 @@
                 "sv_icu_folding",
                 "preserve_original",
                 "remove_empty"
-            ]
-        }
-    },
-    "filter": {
-        "icu_normalizer": {
-            "type": "icu_normalizer",
-            "name": "nfkc_cf"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "icu_folding": {
-            "type": "icu_folding"
+        "zh_plain": {
+            "char_filter": [
+                "word_break_helper"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "remove_empty": {
-            "type": "length",
-            "min": 1
+        "zh_plain_search": {
+            "char_filter": [
+                "word_break_helper"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "standard",
+            "type": "custom"
         },
-        "aggressive_splitting": {
-            "type": "word_delimiter",
-            "stem_english_possessive": false,
-            "preserve_original": false
+        "zh_text": {
+            "char_filter": [
+                "stconvertfix",
+                "tsconvert"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "smartcn_tokenizer",
+            "type": "custom"
         },
-        "possessive_english": {
-            "type": "stemmer",
-            "language": "possessive_english"
-        },
-        "custom_stem": {
-            "type": "stemmer_override",
-            "rules": "guidelines => guideline"
-        },
-        "smartcn_stop": {
-            "type": "stop",
-            "stopwords": [
-                ","
-            ]
-        },
-        "sv_icu_folding": {
-            "type": "icu_folding",
-            "unicodeSetFilter": "[^\u00e5\u00e4\u00f6\u00c5\u00c4\u00d6]"
-        },
-        "swedish_stop": {
-            "type": "stop",
-            "stopwords": "_swedish_"
-        },
-        "swedish_stemmer": {
-            "type": "stemmer",
-            "language": "swedish"
+        "zh_text_search": {
+            "char_filter": [
+                "stconvertfix",
+                "tsconvert"
+            ],
+            "filter": [
+                "smartcn_stop",
+                "icu_normalizer"
+            ],
+            "tokenizer": "smartcn_tokenizer",
+            "type": "custom"
         }
     },
     "char_filter": {
-        "word_break_helper": {
-            "type": "mapping",
-            "mappings": [
-                "_=>\\u0020",
-                ".=>\\u0020",
-                "(=>\\u0020",
-                ")=>\\u0020"
-            ]
-        },
         "kana_map": {
-            "type": "mapping",
             "mappings": [
                 "\\u3041=>\\u30a1",
                 "\\u3042=>\\u30a2",
@@ -220,19 +166,16 @@
                 "\\u3044=>\\u30a4",
                 "\\u3045=>\\u30a5",
                 "\\u3046=>\\u30a6",
-                "\\u3094=>\\u30f4",
                 "\\u3047=>\\u30a7",
                 "\\u3048=>\\u30a8",
                 "\\u3049=>\\u30a9",
                 "\\u304a=>\\u30aa",
-                "\\u3095=>\\u30f5",
                 "\\u304b=>\\u30ab",
                 "\\u304c=>\\u30ac",
                 "\\u304d=>\\u30ad",
                 "\\u304e=>\\u30ae",
                 "\\u304f=>\\u30af",
                 "\\u3050=>\\u30b0",
-                "\\u3096=>\\u30f6",
                 "\\u3051=>\\u30b1",
                 "\\u3052=>\\u30b2",
                 "\\u3053=>\\u30b3",
@@ -299,21 +242,78 @@
                 "\\u3090=>\\u30f0",
                 "\\u3091=>\\u30f1",
                 "\\u3092=>\\u30f2",
-                "\\u3093=>\\u30f3"
-            ]
+                "\\u3093=>\\u30f3",
+                "\\u3094=>\\u30f4",
+                "\\u3095=>\\u30f5",
+                "\\u3096=>\\u30f6"
+            ],
+            "type": "mapping"
         },
         "stconvertfix": {
-            "type": "mapping",
             "mappings": [
                 "\\u606d\\u5f18=>\\u606d \\u5f18",
                 "\\u5138=>\\u3469"
-            ]
+            ],
+            "type": "mapping"
         },
         "tsconvert": {
-            "type": "stconvert",
+            "convert_type": "t2s",
             "delimiter": "#",
             "keep_both": false,
-            "convert_type": "t2s"
+            "type": "stconvert"
+        },
+        "word_break_helper": {
+            "mappings": [
+                "_=>\\u0020",
+                ".=>\\u0020",
+                "(=>\\u0020",
+                ")=>\\u0020"
+            ],
+            "type": "mapping"
+        }
+    },
+    "filter": {
+        "aggressive_splitting": {
+            "preserve_original": false,
+            "stem_english_possessive": false,
+            "type": "word_delimiter"
+        },
+        "custom_stem": {
+            "rules": "guidelines => guideline",
+            "type": "stemmer_override"
+        },
+        "icu_folding": {
+            "type": "icu_folding"
+        },
+        "icu_normalizer": {
+            "name": "nfkc_cf",
+            "type": "icu_normalizer"
+        },
+        "possessive_english": {
+            "language": "possessive_english",
+            "type": "stemmer"
+        },
+        "remove_empty": {
+            "min": 1,
+            "type": "length"
+        },
+        "smartcn_stop": {
+            "stopwords": [
+                ","
+            ],
+            "type": "stop"
+        },
+        "sv_icu_folding": {
+            "type": "icu_folding",
+            "unicodeSetFilter": "[^\u00c5\u00e5\u00c4\u00e4\u00d6\u00f6]"
+        },
+        "swedish_stemmer": {
+            "language": "swedish",
+            "type": "stemmer"
+        },
+        "swedish_stop": {
+            "stopwords": "_swedish_",
+            "type": "stop"
         }
     },
     "tokenizer": []

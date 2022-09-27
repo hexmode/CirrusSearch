@@ -45,8 +45,8 @@ class Server {
 			}
 
 			if ( globals.pending[ data.check ] ) {
-				globals.pending[ data.check ].then( function ( data ) {
-					res.send( data );
+				globals.pending[ data.check ].then( function ( sendData ) {
+					res.send( sendData );
 					next();
 				} );
 			} else if ( data.check ) {
@@ -96,8 +96,14 @@ class Server {
 		}
 		// TODO: figure out why the process channel is closed when cucumber tries to send
 		// the exit signal...
-		if ( msg.exit && server ) {
-			server.close();
+		if ( msg.exit ) {
+			console.log( 'tracker received shutdown message' );
+			if ( server ) {
+				server.close();
+			}
+			// The explicit design is to exit when requested by controlling process.
+			// eslint-disable-next-line no-process-exit
+			process.exit();
 		}
 	} );
 } )();

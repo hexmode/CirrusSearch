@@ -3,9 +3,10 @@
 namespace CirrusSearch;
 
 use CirrusSearch\BuildDocument\BuildDocument;
-use CirrusSearch\MetaStore\MetaStoreIndex;
+use CirrusSearch\BuildDocument\BuildDocumentException;
 use CirrusSearch\Search\CirrusIndexField;
 use Elastica\Bulk\Action\AbstractDocument;
+use Elastica\Document;
 use Elastica\Exception\Bulk\ResponseException;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
@@ -33,8 +34,6 @@ use WikiPage;
  * http://www.gnu.org/copyleft/gpl.html
  */
 class DataSender extends ElasticsearchIntermediary {
-	const ALL_INDEXES_FROZEN_NAME = 'freeze-everything';
-
 	/** @var \Psr\Log\LoggerInterface */
 	private $log;
 
@@ -52,98 +51,179 @@ class DataSender extends ElasticsearchIntermediary {
 	private $searchConfig;
 
 	/**
-	 * @var callable
-	 */
-	private $availableForWriteCallback;
-
-	/**
 	 * @param Connection $conn
 	 * @param SearchConfig $config
-	 * @param callable|null $availableForWriteCallback callback that must return a bool (true: available, false: frozen)
 	 */
-	public function __construct( Connection $conn, SearchConfig $config, callable $availableForWriteCallback = null ) {
+	public function __construct( Connection $conn, SearchConfig $config ) {
 		parent::__construct( $conn, null, 0 );
 		$this->log = LoggerFactory::getInstance( 'CirrusSearch' );
 		$this->failedLog = LoggerFactory::getInstance( 'CirrusSearchChangeFailed' );
 		$this->indexBaseName = $config->get( SearchConfig::INDEX_BASE_NAME );
 		$this->searchConfig = $config;
-		$this->availableForWriteCallback = $availableForWriteCallback ?: function () {
-			return $this->metastoreAvailableForWrite();
-		};
 	}
 
 	/**
-	 * Disallow writes to all indices
-	 *
-	 * @param string $reason Why writes are being paused
-	 */
-	public function freezeIndexes( $reason ) {
-		$this->log->info( "Freezing writes to all indices" );
-		$doc = new \Elastica\Document( self::ALL_INDEXES_FROZEN_NAME, [
-			'host' => gethostname(),
-			'timestamp' => time(),
-			'reason' => strval( $reason ),
-		] );
-		$doc->setDocAsUpsert( true );
-		$doc->setRetryOnConflict( $this->retryOnConflict() );
-
-		$type = MetaStoreIndex::getElasticaType( $this->connection );
-		$type->addDocument( $doc );
-		// Ensure our freeze is immediately seen (mostly for testing purposes)
-		$type->getIndex()->refresh();
-	}
-
-	/**
-	 * Allow writes
-	 *
-	 */
-	public function thawIndexes() {
-		$this->log->info( "Thawing writes to all indices" );
-		MetaStoreIndex::getElasticaType( $this->connection )->deleteIds( [
-			self::ALL_INDEXES_FROZEN_NAME,
-		] );
-	}
-
-	/**
-	 * Checks if all the specified indexes are available for writes. They might
-	 * not currently allow writes during procedures like reindexing or rolling
-	 * restarts.
-	 *
-	 * @return bool
-	 */
-	public function isAvailableForWrites() {
-		return ( $this->availableForWriteCallback )();
-	}
-
-	/**
-	 * @return bool
-	 */
-	private function metastoreAvailableForWrite() {
-		$response = MetaStoreIndex::getElasticaType( $this->connection )
-			->request( self::ALL_INDEXES_FROZEN_NAME, 'GET', [], [
-				'_source' => 'false',
-			] );
-		$result = $response->getData();
-		if ( !isset( $result['found'] ) ) {
-			// Some sort of error response ..what now?
-			return true;
-		}
-		return $result['found'] === false;
-	}
-
-	/**
-	 * @param string $indexType type of index to which to send $documents
-	 * @param \Elastica\Document[] $documents documents to send
-	 * @param string $elasticType Mapping type to use for the document
+	 * @param string $indexSuffix
+	 * @param string[] $docIds
+	 * @param string $tagField
+	 * @param string $tagPrefix
+	 * @param string|string[]|null $tagNames A tag name or list of tag names. Each tag will be
+	 *   set for each document ID. Omit for tags which are fully defined by their prefix.
+	 * @param int[]|int[][]|null $tagWeights An optional map of docid => weight. When $tagName is
+	 *   null, the weight is an integer. When $tagName is not null, the weight is itself a
+	 *   tagname => int map. Weights are between 1-1000, and can be omitted (in which case no
+	 *   update will be sent for the corresponding docid/tag combination).
+	 * @param int $batchSize
 	 * @return Status
 	 */
-	public function sendData( $indexType, array $documents, $elasticType = Connection::PAGE_TYPE_NAME ) {
-		if ( !$documents ) {
-			return Status::newGood();
+	public function sendUpdateWeightedTags(
+		string $indexSuffix,
+		array $docIds,
+		string $tagField,
+		string $tagPrefix,
+		$tagNames = null,
+		array $tagWeights = null,
+		int $batchSize = 30
+	): Status {
+		Assert::parameterType( [ 'string', 'array', 'null' ], $tagNames, '$tagNames' );
+		if ( is_array( $tagNames ) ) {
+			Assert::parameterElementType( 'string', $tagNames, '$tagNames' );
+		}
+		if ( $tagNames === null ) {
+			$tagNames = [ 'exists' ];
+			if ( $tagWeights !== null ) {
+				$tagWeights = [ 'exists' => $tagWeights ];
+			}
+		} elseif ( is_string( $tagNames ) ) {
+			$tagNames = [ $tagNames ];
 		}
 
-		if ( !$this->isAvailableForWrites() ) {
-			return Status::newFatal( 'cirrussearch-indexes-frozen' );
+		Assert::precondition( strpos( $tagPrefix, '/' ) === false,
+			"invalid tag prefix $tagPrefix: must not contain /" );
+		foreach ( $tagNames as $tagName ) {
+			Assert::precondition( strpos( $tagName, '|' ) === false,
+				"invalid tag name $tagName: must not contain |" );
+		}
+		if ( $tagWeights ) {
+			foreach ( $tagWeights as $docId => $docWeights ) {
+				Assert::precondition( in_array( $docId, $docIds ),
+					"document ID $docId used in \$tagWeights but not found in \$docIds" );
+				foreach ( $docWeights as $tagName => $weight ) {
+					Assert::precondition( in_array( $tagName, $tagNames, true ),
+						"tag name $tagName used in \$tagWeights but not found in \$tagNames" );
+					Assert::precondition( is_int( $weight ), "weights must be integers but $weight is "
+						. gettype( $weight ) );
+					Assert::precondition( $weight >= 1 && $weight <= 1000,
+						"weights must be between 1 and 1000 (found: $weight)" );
+				}
+			}
+		}
+
+		$client = $this->connection->getClient();
+		$status = Status::newGood();
+		$pageIndex = $this->connection->getIndex( $this->indexBaseName, $indexSuffix );
+		foreach ( array_chunk( $docIds, $batchSize ) as $docIdsChunk ) {
+			$bulk = new \Elastica\Bulk( $client );
+			$bulk->setIndex( $pageIndex );
+			foreach ( $docIdsChunk as $docId ) {
+				$tags = [];
+				foreach ( $tagNames as $tagName ) {
+					$tagValue = "$tagPrefix/$tagName";
+					if ( $tagWeights !== null ) {
+						if ( !isset( $tagWeights[$docId][$tagName] ) ) {
+							continue;
+						}
+						// To pass the assertions above, the weight must be either an int, a float
+						// with an integer value, or a string representation of one of those.
+						// Convert to int to ensure there is no trailing '.0'.
+						$tagValue .= '|' . (int)$tagWeights[$docId][$tagName];
+					}
+					$tags[] = $tagValue;
+				}
+				if ( !$tags ) {
+					continue;
+				}
+				$script = new \Elastica\Script\Script( 'super_detect_noop', [
+					'source' => [ $tagField => $tags ],
+					'handlers' => [ $tagField => CirrusIndexField::MULTILIST_HANDLER ],
+				], 'super_detect_noop' );
+				$script->setId( $docId );
+				$bulk->addScript( $script, 'update' );
+			}
+
+			if ( !$bulk->getActions() ) {
+				continue;
+			}
+
+			// Execute the bulk update
+			$exception = null;
+			try {
+				$this->start( new BulkUpdateRequestLog( $this->connection->getClient(),
+					'updating {numBulk} documents',
+					'send_data_reset_weighted_tags',
+					[ 'numBulk' => count( $docIdsChunk ), 'index' => $pageIndex->getName() ]
+				) );
+				$bulk->send();
+			} catch ( ResponseException $e ) {
+				if ( !$this->bulkResponseExceptionIsJustDocumentMissing( $e ) ) {
+					$exception = $e;
+				}
+			} catch ( \Elastica\Exception\ExceptionInterface $e ) {
+				$exception = $e;
+			}
+			if ( $exception === null ) {
+				$this->success();
+			} else {
+				$this->failure( $exception );
+				$this->failedLog->warning( "Update weighted tag {weightedTagFieldName} for {weightedTagPrefix} in articles: {documents}",
+					[
+						'exception' => $exception,
+						'weightedTagFieldName' => $tagField,
+						'weightedTagPrefix' => $tagPrefix,
+						'weightedTagNames' => implode( '|', $tagNames ),
+						'weightedTagWeight' => $tagWeights,
+						'docIds' => implode( ',', $docIds )
+					] );
+				$status->error( 'cirrussearch-failed-update-weighted-tags' );
+			}
+		}
+		return $status;
+	}
+
+	/**
+	 * @param string $indexSuffix
+	 * @param string[] $docIds
+	 * @param string $tagField
+	 * @param string $tagPrefix
+	 * @param int $batchSize
+	 * @return Status
+	 */
+	public function sendResetWeightedTags(
+		string $indexSuffix,
+		array $docIds,
+		string $tagField,
+		string $tagPrefix,
+		int $batchSize = 30
+	): Status {
+		return $this->sendUpdateWeightedTags(
+			$indexSuffix,
+			$docIds,
+			$tagField,
+			$tagPrefix,
+			CirrusIndexField::MULTILIST_DELETE_GROUPING,
+			null,
+			$batchSize
+		);
+	}
+
+	/**
+	 * @param string $indexSuffix suffix of index to which to send $documents
+	 * @param \Elastica\Document[] $documents documents to send
+	 * @return Status
+	 */
+	public function sendData( $indexSuffix, array $documents ) {
+		if ( !$documents ) {
+			return Status::newGood();
 		}
 
 		// Copy the docs so that modifications made in this method are not propagated up to the caller
@@ -161,15 +241,25 @@ class DataSender extends ElasticsearchIntermediary {
 			$this->connection,
 			$services->getDBLoadBalancer()->getConnection( DB_REPLICA ),
 			$services->getParserCache(),
-			$services->getRevisionStore()
+			$services->getRevisionStore(),
+			new CirrusSearchHookRunner( $services->getHookContainer() )
 		);
-		foreach ( $documents as $i => $doc ) {
-			if ( !$builder->finalize( $doc ) ) {
-				// Something has changed while this was hanging out in the job
-				// queue and should no longer be written to elastic.
-				unset( $documents[$i] );
+		try {
+			foreach ( $documents as $i => $doc ) {
+				if ( !$builder->finalize( $doc ) ) {
+					// Something has changed while this was hanging out in the job
+					// queue and should no longer be written to elastic.
+					unset( $documents[$i] );
+				}
 			}
+		} catch ( BuildDocumentException $be ) {
+			$this->failedLog->warning(
+				'Failed to update documents',
+				[ 'exception' => $be ]
+			);
+			return Status::newFatal( 'cirrussearch-failed-build-document' );
 		}
+
 		if ( !$documents ) {
 			// All documents noop'd
 			return Status::newGood();
@@ -199,18 +289,17 @@ class DataSender extends ElasticsearchIntermediary {
 		$responseSet = null;
 		$justDocumentMissing = false;
 		try {
-			$pageType = $this->connection->getIndexType(
-				$this->indexBaseName, $indexType, $elasticType
-			);
+			$pageIndex = $this->connection->getIndex( $this->indexBaseName, $indexSuffix );
 
 			$this->start( new BulkUpdateRequestLog(
 				$this->connection->getClient(),
 				'sending {numBulk} documents to the {index} index(s)',
-				'send_data_write'
+				'send_data_write',
+				[ 'numBulk' => count( $documents ), 'index' => $pageIndex->getName() ]
 			) );
 			$bulk = new \Elastica\Bulk( $this->connection->getClient() );
 			$bulk->setShardTimeout( $this->searchConfig->get( 'CirrusSearchUpdateShardTimeout' ) );
-			$bulk->setType( $pageType );
+			$bulk->setIndex( $pageIndex );
 			if ( $this->searchConfig->getElement( 'CirrusSearchElasticQuirks', 'retry_on_conflict' ) ) {
 				$actions = [];
 				foreach ( $documents as $doc ) {
@@ -233,10 +322,10 @@ class DataSender extends ElasticsearchIntermediary {
 			$responseSet = $bulk->send();
 		} catch ( ResponseException $e ) {
 			$justDocumentMissing = $this->bulkResponseExceptionIsJustDocumentMissing( $e,
-				function ( $docId ) use ( $e, $indexType ) {
+				function ( $docId ) use ( $e, $indexSuffix ) {
 					$this->log->info(
 						"Updating a page that doesn't yet exist in Elasticsearch: {docId}",
-						[ 'docId' => $docId, 'indexType' => $indexType ]
+						[ 'docId' => $docId, 'indexSuffix' => $indexSuffix ]
 					);
 				}
 			);
@@ -253,17 +342,35 @@ class DataSender extends ElasticsearchIntermediary {
 			$this->success();
 			if ( $validResponse ) {
 				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable responseset is not null
-				$this->reportUpdateMetrics( $responseSet, $indexType, count( $documents ) );
+				$this->reportUpdateMetrics( $responseSet, $indexSuffix, count( $documents ) );
 			}
 			return Status::newGood();
 		} else {
 			$this->failure( $exception );
-			$documentIds = array_map( function ( $d ) {
-				return $d->getId();
+			$documentIds = array_map( static function ( $d ) {
+				return (string)( $d->getId() );
 			}, $documents );
 			$logContext = [ 'docId' => implode( ', ', $documentIds ) ];
 			if ( $exception ) {
 				$logContext['exception'] = $exception;
+			} else {
+				// we want to figure out error_massage from the responseData log, because
+				// error_message is currently not set when exception is null and response is not
+				// valid
+				$responseData = $responseSet->getData();
+				$responseDataString = json_encode( $responseData );
+
+				// in logstash some error_message seems to be empty we are assuming its due to
+				// non UTF-8 sequences in the response data causing the json_encode to return empty
+				// string,so we added a logic to validate the assumption
+				if ( json_last_error() === JSON_ERROR_UTF8 ) {
+					$responseDataString =
+						json_encode( $this->convertEncoding( $responseData ) );
+				} elseif ( json_last_error() !== JSON_ERROR_NONE ) {
+					$responseDataString = json_last_error_msg();
+				}
+
+				$logContext['error_message'] = mb_substr( $responseDataString, 0, 4096 );
 			}
 			$this->failedLog->warning(
 				'Failed to update documents {docId}',
@@ -275,11 +382,11 @@ class DataSender extends ElasticsearchIntermediary {
 
 	/**
 	 * @param \Elastica\Bulk\ResponseSet $responseSet
-	 * @param string $indexType
+	 * @param string $indexSuffix
 	 * @param int $sent
 	 */
 	private function reportUpdateMetrics(
-		\Elastica\Bulk\ResponseSet $responseSet, $indexType, $sent
+		\Elastica\Bulk\ResponseSet $responseSet, $indexSuffix, $sent
 	) {
 		$updateStats = [
 			'sent' => $sent,
@@ -305,7 +412,7 @@ class DataSender extends ElasticsearchIntermediary {
 		$metricsPrefix = "CirrusSearch.$cluster.updates";
 		foreach ( $updateStats as $what => $num ) {
 			$stats->updateCount(
-				"$metricsPrefix.details.{$this->indexBaseName}.$indexType.$what", $num
+				"$metricsPrefix.details.{$this->indexBaseName}.$indexSuffix.$what", $num
 			);
 			$stats->updateCount( "$metricsPrefix.all.$what", $num );
 		}
@@ -315,40 +422,36 @@ class DataSender extends ElasticsearchIntermediary {
 	 * Send delete requests to Elasticsearch.
 	 *
 	 * @param string[] $docIds elasticsearch document ids to delete
-	 * @param string|null $indexType index from which to delete.  null means all.
-	 * @param string|null $elasticType Mapping type to use for the document. null means all types.
+	 * @param string|null $indexSuffix index from which to delete.  null means all.
 	 * @return Status
 	 */
-	public function sendDeletes( $docIds, $indexType = null, $elasticType = null ) {
-		if ( $indexType === null ) {
-			$indexes = $this->connection->getAllIndexTypes( Connection::PAGE_TYPE_NAME );
+	public function sendDeletes( $docIds, $indexSuffix = null ) {
+		if ( $indexSuffix === null ) {
+			$indexes = $this->connection->getAllIndexSuffixes( Connection::PAGE_DOC_TYPE );
 		} else {
-			$indexes = [ $indexType ];
-		}
-
-		if ( $elasticType === null ) {
-			$elasticType = Connection::PAGE_TYPE_NAME;
-		}
-
-		if ( !$this->isAvailableForWrites() ) {
-			return Status::newFatal( 'cirrussearch-indexes-frozen' );
+			$indexes = [ $indexSuffix ];
 		}
 
 		$idCount = count( $docIds );
 		if ( $idCount !== 0 ) {
 			try {
-				foreach ( $indexes as $indexType ) {
+				foreach ( $indexes as $indexSuffix ) {
 					$this->startNewLog(
-						'deleting {numIds} from {indexType}/{elasticType}',
+						'deleting {numIds} from {indexSuffix}',
 						'send_deletes', [
 							'numIds' => $idCount,
-							'indexType' => $indexType,
-							'elasticType' => $elasticType,
+							'indexSuffix' => $indexSuffix,
 						]
 					);
 					$this->connection
-						->getIndexType( $this->indexBaseName, $indexType, $elasticType )
-						->deleteIds( $docIds );
+						->getIndex( $this->indexBaseName, $indexSuffix )
+						->deleteDocuments(
+							array_map(
+								static function ( $id ) {
+									return new Document( $id );
+								}, $docIds
+							)
+						);
 					$this->success();
 				}
 			} catch ( \Elastica\Exception\ExceptionInterface $e ) {
@@ -376,10 +479,6 @@ class DataSender extends ElasticsearchIntermediary {
 	 * @return Status
 	 */
 	public function sendOtherIndexUpdates( $localSite, $indexName, array $otherActions, $batchSize = 30 ) {
-		if ( !$this->isAvailableForWrites() ) {
-			return Status::newFatal( 'cirrussearch-indexes-frozen' );
-		}
-
 		$client = $this->connection->getClient();
 		$status = Status::newGood();
 		foreach ( array_chunk( $otherActions, $batchSize ) as $updates ) {
@@ -400,7 +499,7 @@ class DataSender extends ElasticsearchIntermediary {
 					'super_detect_noop'
 				);
 				$script->setId( $update['docId'] );
-				$script->setParam( '_type', 'page' );
+				$script->setParam( '_type', '_doc' );
 				$script->setParam( '_index', $indexName );
 				$bulk->addScript( $script, 'update' );
 				$titles[] = $title;
@@ -412,8 +511,9 @@ class DataSender extends ElasticsearchIntermediary {
 				$this->start( new BulkUpdateRequestLog(
 					$this->connection->getClient(),
 					'updating {numBulk} documents in other indexes',
-					'send_data_other_idx_write'
-				) );
+					'send_data_other_idx_write',
+						[ 'numBulk' => count( $updates ), 'index' => $indexName ]
+					) );
 				$bulk->send();
 			} catch ( ResponseException $e ) {
 				if ( !$this->bulkResponseExceptionIsJustDocumentMissing( $e ) ) {
@@ -446,7 +546,7 @@ class DataSender extends ElasticsearchIntermediary {
 	 * @return string The set action to be performed. Either 'add' or 'remove'
 	 */
 	protected function decideRequiredSetAction( Title $title ) {
-		$page = new WikiPage( $title );
+		$page = WikiPage::factory( $title );
 		$page->loadPageData( WikiPage::READ_LATEST );
 		if ( $page->exists() ) {
 			return 'add';
@@ -477,7 +577,7 @@ class DataSender extends ElasticsearchIntermediary {
 			if ( is_string( $error ) ) {
 				// es 1.7 cluster
 				$message = $bulkResponse->getError();
-				if ( false === strpos( $message, 'DocumentMissingException' ) ) {
+				if ( strpos( $message, 'DocumentMissingException' ) === false ) {
 					$justDocumentMissing = false;
 					continue;
 				}
@@ -545,7 +645,7 @@ class DataSender extends ElasticsearchIntermediary {
 			// The noop script only supports Map but an empty array
 			// may be transformed to [] instead of {} when serialized to json
 			// causing class cast exception failures
-			$params['handlers'] = new \stdClass();
+			$params['handlers'] = (object)[];
 		}
 		$script = new \Elastica\Script\Script( 'super_detect_noop', $params, 'super_detect_noop' );
 		if ( $doc->getDocAsUpsert() ) {
@@ -564,4 +664,17 @@ class DataSender extends ElasticsearchIntermediary {
 		return $this->searchConfig->get(
 			'CirrusSearchUpdateConflictRetryCount' );
 	}
+
+	private function convertEncoding( $d ) {
+		if ( is_string( $d ) ) {
+			return mb_convert_encoding( $d, 'UTF-8', 'UTF-8' );
+		}
+
+		foreach ( $d as &$v ) {
+			$v = $this->convertEncoding( $v );
+		}
+
+		return $d;
+	}
+
 }

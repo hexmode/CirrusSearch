@@ -8,15 +8,22 @@ use MediaWiki\MediaWikiServices;
 class CirrusIntegrationTestCase extends \MediaWikiIntegrationTestCase {
 	use CirrusTestCaseTrait;
 
-	public static function setUpBeforeClass() : void {
+	public static function setUpBeforeClass(): void {
 		parent::setUpBeforeClass();
 		LoggerFactory::getInstance( 'CirrusSearchIntegTest' )->debug( 'Using seed ' . self::getSeed() );
 	}
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 		$services = MediaWikiServices::getInstance();
 		$services->resetServiceForTesting( InterwikiResolver::SERVICE );
-		$services->getConfigFactory()->makeConfig( 'CirrusSearch' )->clearCachesForTesting();
+		$config = $services->getConfigFactory()->makeConfig( 'CirrusSearch' );
+		$config->clearCachesForTesting();
+		if ( $config->has( 'CirrusSearchServers' ) ) {
+			// Various tests expect to be able to set $wgCirrusSearchClusters and have it
+			// work, but setting wgCirrusSearchServers short-circuits the entire cluster
+			// operations.
+			$this->fail( 'Integration tests require $wgCirrusSeachServers to be unset' );
+		}
 	}
 }

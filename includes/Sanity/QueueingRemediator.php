@@ -5,6 +5,7 @@ namespace CirrusSearch\Sanity;
 use CirrusSearch\Job\DeletePages;
 use CirrusSearch\Job\LinksUpdate;
 use JobQueueGroup;
+use MediaWiki\MediaWikiServices;
 use Title;
 use WikiPage;
 
@@ -80,7 +81,7 @@ class QueueingRemediator implements Remediator {
 	public function pageInWrongIndex( $docId, WikiPage $page, $wrongIndex ) {
 		$this->jobQueue->push(
 			new DeletePages( $page->getTitle(), [
-				'indexType' => $wrongIndex,
+				'indexSuffix' => $wrongIndex,
 				'docId' => $docId,
 				'cluster' => $this->cluster,
 			] )

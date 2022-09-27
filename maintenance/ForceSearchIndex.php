@@ -10,9 +10,11 @@ use CirrusSearch\SearchConfig;
 use CirrusSearch\Updater;
 use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 use MWException;
 use MWTimestamp;
 use Title;
+use WikiMap;
 use Wikimedia\Rdbms\IDatabase;
 use WikiPage;
 
@@ -43,7 +45,7 @@ require_once "$IP/maintenance/Maintenance.php";
 require_once __DIR__ . '/../includes/Maintenance/Maintenance.php';
 
 class ForceSearchIndex extends Maintenance {
-	const SECONDS_BETWEEN_JOB_QUEUE_LENGTH_CHECKS = 3;
+	private const SECONDS_BETWEEN_JOB_QUEUE_LENGTH_CHECKS = 3;
 	/** @var MWTimestamp|null */
 	public $fromDate = null;
 	/** @var MWTimestamp|null */
@@ -60,7 +62,7 @@ class ForceSearchIndex extends Maintenance {
 	public $lastJobQueueCheckTime = 0;
 
 	/**
-	 * @var boolean true if the script is run with --ids
+	 * @var bool true if the script is run with --ids
 	 */
 	private $runWithIds;
 
@@ -135,7 +137,7 @@ class ForceSearchIndex extends Maintenance {
 
 	public function execute() {
 		$this->disablePoolCountersAndLogging();
-		$wiki = sprintf( "[%20s]", wfWikiID() );
+		$wiki = sprintf( "[%20s]", WikiMap::getCurrentWikiId() );
 
 		// Make sure we've actually got indices to populate
 		if ( !$this->simpleCheckIndexes() ) {
@@ -209,6 +211,7 @@ class ForceSearchIndex extends Maintenance {
 		} else {
 			$it = $this->getDeletesIterator();
 		}
+		$jobQueueGroup = JobQueueGroup::singleton();
 
 		foreach ( $it as $batch ) {
 			if ( $this->indexUpdates ) {
@@ -216,7 +219,7 @@ class ForceSearchIndex extends Maintenance {
 				$updates = array_filter( $batch['updates'] );
 				if ( $this->queue ) {
 					$this->waitForQueueToShrink( $wiki );
-					JobQueueGroup::singleton()->push( Job\MassIndex::build(
+					$jobQueueGroup->push( Job\MassIndex::build(
 						$updates, $updateFlags, $this->getOption( 'cluster' )
 					) );
 				} else {
@@ -379,9 +382,9 @@ class ForceSearchIndex extends Maintenance {
 		}
 
 		// Now check all index types to see if they exist
-		foreach ( $this->getConnection()->getAllIndexTypes() as $indexType ) {
+		foreach ( $this->getConnection()->getAllIndexSuffixes() as $indexSuffix ) {
 			// If the alias for this type doesn't exist, fail
-			if ( !$this->getConnection()->getIndex( $indexBaseName, $indexType )->exists() ) {
+			if ( !$this->getConnection()->getIndex( $indexBaseName, $indexSuffix )->exists() ) {
 				return false;
 			}
 		}
@@ -443,9 +446,7 @@ class ForceSearchIndex extends Maintenance {
 		$it = new BatchRowIterator( $dbr, $pageQuery['tables'], 'page_id', $this->getBatchSize() );
 		$it->setFetchColumns( $pageQuery['fields'] );
 		$it->addJoinConditions( $pageQuery['joins'] );
-		$it->addConditions( [
-			'page_id in (' . $dbr->makeList( $this->pageIds, LIST_COMMA ) . ')',
-		] );
+		$it->addConditions( [ 'page_id' => $this->pageIds ] );
 		$this->attachPageConditions( $dbr, $it, 'page' );
 
 		return $this->wrapDecodeResults( $it, 'page_id' );
@@ -511,7 +512,7 @@ class ForceSearchIndex extends Maintenance {
 	}
 
 	private function attachPageConditions( IDatabase $dbr, BatchRowIterator $it, $columnPrefix ) {
-		if ( $this->namespace ) {
+		if ( $this->namespace !== null ) {
 			$it->addConditions( [
 				"{$columnPrefix}_namespace" => $this->namespace,
 			] );

@@ -14,9 +14,11 @@ class SearchContextTest extends CirrusTestCase {
 	 */
 	private $context;
 
-	public function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
-		$this->context = new SearchContext( $this->newHashSearchConfig() );
+		$this->context = new SearchContext(
+			$this->newHashSearchConfig(), null, null, null, null, $this->createMock( CirrusSearchHookRunner::class )
+		);
 	}
 
 	public function testNoSyntax() {

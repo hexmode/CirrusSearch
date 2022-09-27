@@ -73,7 +73,7 @@ class QueryFixer implements Visitor {
 
 	/**
 	 * @param ParsedQuery $query
-	 * @return QueryFixer|object|null
+	 * @return QueryFixer
 	 */
 	public static function build( ParsedQuery $query ) {
 		if ( self::$cache === null || count( self::$cache ) > 100 ) {
@@ -152,7 +152,7 @@ class QueryFixer implements Visitor {
 				throw new \InvalidArgumentException( '$replacement cannot be null nor wrap a null value' );
 			}
 		}
-		$replacement = preg_replace( '/([~?*"\\\\])/', '\\\\$1', $replacement );
+		$replacement = preg_replace( '/[~?*"\\\\]/', '\\\\$0', $replacement );
 
 		$prefix = "";
 		if ( $this->parsedQuery->hasCleanup( ParsedQuery::TILDE_HEADER ) ) {

@@ -15,6 +15,8 @@
 	"cirrussearch-now-using": "এই ৱিকিয়ে এটা নতুন সন্ধান ইঞ্জিন ব্যৱহাৰ কৰিছে। ([[mw:Special:MyLanguage/Help:CirrusSearch|অধিক জানক]])",
 	"cirrussearch-pref-label": "নতুন সন্ধান",
 	"cirrussearch-give-feedback": "আমাক আপোনাৰ মতামত জনাওক",
+	"cirrussearch-query-too-long": "অনুসন্ধানৰ অনুৰোধ সৰ্বাধিক অনুমোদিত দৈৰ্ঘ্যতকৈ দীঘল। (প্ৰকৃত: $1; অনুমোদিত: $2)",
+	"cirrussearch-query-too-long-with-exemptions": "অনুসন্ধানৰ অনুৰোধ সৰ্বাধিক অনুমোদিত দৈৰ্ঘ্যতকৈ দীঘল। (প্ৰকৃত: $1, অনুমোদিত: $2, $3-ক নধৰাকৈ)",
 	"cirrussearch-completion-profile-strict": "কেইটামান বিৰাম চিহ্ন আঁতৰোৱা কঠোৰ প্ৰ'ফাইল কিন্তু ডায়ক্ৰিটিক আৰু ষ্ট্ৰেচৰ চিহ্ন ৰখা হয়।",
 	"cirrussearch-completion-profile-classic": "ধ্ৰুপদী উপসৰ্গ, কেইটামান বিৰাম চিহ্ন আৰু কিছুমান ডায়ক্ৰিটিক আঁতৰোৱা হৈছে।",
 	"cirrussearch-completion-profile-normal": "কেইটামান বিৰাম চিহ্ন, কিছুমান ডায়ক্ৰিটিক আৰু ষ্টপৱৰ্ড আঁতৰোৱা হৈছে।",
@@ -44,6 +46,8 @@
 	"cirrussearch-completion-profile-normal-subphrases-pref-desc": "কোনো বানান সংশোধন নাই। নিকট পুনঃনিৰ্দেশনা মীমাংসা কৰে। শিৰোনামৰ উপখণ্ড-বাক্য মিলায়।",
 	"cirrussearch-completion-profile-classic-pref-name": "ধ্ৰুপদী উপসৰ্গ সন্ধান",
 	"cirrussearch-completion-profile-classic-pref-desc": "কোনো বানান সংশোধন নাই। শিৰোনামৰ আৰম্ভণিৰ সৈতে মিলায়।",
+	"cirrussearch-timed-out": "সন্ধানৰ সময় উকলি গৈছে, কেৱল আংশিক ফলাফলহে উপলব্ধ।",
+	"cirrussearch-regex-timed-out": "ৰেগুলাৰ এক্সপ্ৰেছন সন্ধানৰ সময় উকলি গৈছে, কেৱল আংশিক ফলাফলহে উপলব্ধ। সম্পূৰ্ণ ফলাফল পাবলৈ আপোনাৰ ৰেগুলাৰ এক্সপ্ৰেছন সৰল কৰিবলৈ চেষ্টা কৰক।",
 	"cirrussearch-file-numeric-feature-not-a-number": "সন্ধান শব্দ '$1'ৰ বাবে সাংখ্যিক মানৰ প্ৰয়োজন, কিন্তু '$2' প্ৰদান কৰা হৈছে।",
 	"cirrusesarch-file-numeric-feature-multi-argument-w-sign": "সন্ধান শব্দ '$1'-ই একাধিক আৰগুমেণ্ট আৰু '$2'ৰ সৈতে এটা চিহ্ন প্ৰদান কৰাৰ অনুমতি নিদিয়ে।",
 	"cirrussearch-feature-not-available": "এই ৱিকিত সন্ধান কীৱৰ্ড '$1' সক্ষম কৰা হোৱা নাই।",
@@ -52,6 +56,7 @@
 	"cirrussearch-feature-deepcat-exception": "গভীৰ শ্ৰেণী সন্ধানৰ SPARQL কুৱেৰী ব্যৰ্থ হৈছে",
 	"cirrussearch-feature-deepcat-toomany": "গভীৰ শ্ৰেণীৰ কুৱেৰীয়ে অত্যাধিক শ্ৰেণী ঘূৰাই দিছে",
 	"cirrussearch-feature-deepcat-invalid-title": "প্ৰদান কৰা শ্ৰেণীটো অবৈধ।",
+	"cirrussearch-feature-pageid-invalid-id": "অবৈধ পৃষ্ঠা {{PLURAL:$2|আইডি|আইডিসমূহ}}: $1",
 	"cirrussearch-incategory-feature-no-valid-categories": "'$1'-ক কোনো বৈধ শ্ৰেণী প্ৰদান কৰা হোৱা নাই।",
 	"cirrussearch-mlt-feature-no-valid-titles": "'$1'-ক কোনো বৈধ শিৰোনাম প্ৰদান কৰা হোৱা নাই।",
 	"cirrussearch-mlt-not-configured": "'$1' সুবিধাটো ভুলকৈ কনফিগাৰ কৰা হৈছে। এজন প্ৰশাসকক $wgCirrusSearchMoreLikeThisFields ঠিক কৰিবলৈ কওঁক।",
@@ -66,5 +71,6 @@
 	"cirrussearch-autoselect-profile": "সন্ধান ইঞ্জিনটোৱে ব্যৱহাৰ কৰিবলৈ শ্ৰেষ্ঠ প্ৰ'ফাইলৰ সিদ্ধান্ত নিজাববীয়াকৈ ল'বলৈ দিয়ক।",
 	"cirrussearch-offset-too-large": "ফলাফল উদ্ধাৰ কৰিব পৰা নগ'ল। $1-লৈকে সন্ধান ফলাফল সমৰ্থিত, কিন্তু $2-ৰ পৰা আৰম্ভ হোৱা ফলাফলৰ বাবে অনুৰোধ কৰা হৈছিল।",
 	"cirrussearch-offset-not-allowed-with-random-sort": "যাদৃচ্ছিকভাৱে সজোৱা ফলাফলবোৰৰ পৃষ্ঠাকৰণ অনুৰোধ উপেক্ষা কৰা হৈছে।",
-	"cirrussearch-articletopic-invalid-topic": "<kbd>articletopic:</kbd> কীৱৰ্ডৰ বাবে অচিনাক্ত বিষয়বস্তুৰ {{PLURAL:$2|নাম}}: $1"
+	"cirrussearch-articletopic-invalid-topic": "<kbd>articletopic:</kbd> কীৱৰ্ডৰ বাবে অচিনাক্ত বিষয়বস্তুৰ {{PLURAL:$2|নাম}}: $1",
+	"cirrussearch-inlanguage-deprecate-comma": "inlanguage কীৱৰ্ডৰ বাবে পৃথককাৰক হিচাপে কমা (,) ব্যৱহাৰ কৰাটো অৱনমিত কৰা হৈছে। অনুগ্ৰহ কৰি ভাষা পৃথক কৰিবলৈ | (পাইপ) ব্যৱহাৰ কৰক।"
 }

@@ -11,6 +11,8 @@ use CirrusSearch\InterwikiResolverFactory;
 use CirrusSearch\SiteMatrixInterwikiResolver;
 use ExtensionRegistry;
 use MediaWiki\MediaWikiServices;
+use MockHttpTrait;
+use Wikimedia\AtEase\AtEase;
 
 /**
  * @group CirrusSearch
@@ -21,9 +23,7 @@ use MediaWiki\MediaWikiServices;
  * @covers \CirrusSearch\EmptyInterwikiResolver
  */
 class InterwikiResolverTest extends CirrusIntegrationTestCase {
-	/**
-	 * @return bool
-	 */
+
 	public function testCirrusConfigInterwikiResolver() {
 		$resolver = $this->getCirrusConfigInterwikiResolver();
 
@@ -70,16 +70,16 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 	 * @param string $what method to test
 	 * @param mixed $arg arg to $what
 	 * @param mixed $expected expected result of $what($arg)
-	 * @param string[]|null $blacklist
+	 * @param string[]|null $blockList
 	 * @param string[]|null $overrides
 	 */
 	public function testSiteMatrixResolver( $wiki, $what, $arg, $expected,
-			$blacklist = [], $overrides = [] ) {
+			$blockList = [], $overrides = [] ) {
 		if ( !ExtensionRegistry::getInstance()->isLoaded( 'SiteMatrix' ) ) {
 			$this->markTestSkipped( 'SiteMatrix not available.' );
 		}
 
-		$resolver = $this->getSiteMatrixInterwikiResolver( $wiki, $blacklist, $overrides );
+		$resolver = $this->getSiteMatrixInterwikiResolver( $wiki, $blockList, $overrides );
 		switch ( $what ) {
 		case 'sisters':
 			asort( $expected );
@@ -138,7 +138,7 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 				[],
 				[ 's' => 'src' ]
 			],
-			'enwiki sisters with blacklist and overrides' => [
+			'enwiki sisters with block list and overrides' => [
 				'enwiki',
 				'sisters', null,
 				[
@@ -259,13 +259,8 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 			}
 		}
 		$apiResponse = CirrusIntegrationTestCase::loadFixture( $fixtureFile );
+		$client = $this->makeFakeHttpMultiClient( $apiResponse );
 
-		$client = $this->getMockBuilder( \MultiHttpClient::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$client->expects( $this->any() )
-			->method( 'runMulti' )
-			->will( $this->returnValue( $apiResponse ) );
 		$resolver = $this->getSiteMatrixInterwikiResolver( 'enwiki', [], [], $client );
 		$configs = $resolver->getSisterProjectConfigs();
 
@@ -328,9 +323,8 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 		$client = $this->getMockBuilder( \MultiHttpClient::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$client->expects( $this->any() )
-			->method( 'runMulti' )
-			->will( $this->returnValue( $apiResponse ) );
+		$client->method( 'runMulti' )
+			->willReturn( $apiResponse );
 		$resolver = $this->getSiteMatrixInterwikiResolver( 'enwiki', [], [], $client );
 		$configs = $resolver->getSameProjectConfigByLang( 'fr' );
 
@@ -391,9 +385,13 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 	}
 
 	/**
+	 * @param string $wikiId
+	 * @param array $blockList
+	 * @param array $overrides
+	 * @param \MultiHttpClient|null $client
 	 * @return InterwikiResolver
 	 */
-	private function getSiteMatrixInterwikiResolver( $wikiId, array $blacklist,
+	private function getSiteMatrixInterwikiResolver( $wikiId, array $blockList,
 		array $overrides, \MultiHttpClient $client = null ) {
 		$conf = new \SiteConfiguration;
 		$conf->settings = include __DIR__ . '/../resources/wmf/SiteMatrix_SiteConf_IS.php';
@@ -417,9 +415,9 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 			'wgCirrusSearchFetchConfigFromApi' => $client !== null,
 
 			// XXX: for the purpose of the test we need
-			// to have wfWikiID() without DBPrefix so we can reuse
-			// the wmf InterwikiCache which is built against WMF config
-			// where no wgDBprefix is set.
+			// to have WikiMap::getCurrentWikiId() without DBPrefix so
+			// we can reuse the wmf InterwikiCache which is built against
+			// WMF config where no wgDBprefix is set.
 			'wgDBprefix' => null,
 			'wgDBname' => $wikiId,
 			// Used by ClassicInterwikiLookup & SiteMatrixInterwikiResolver
@@ -428,7 +426,7 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 			'wgCirrusSearchInterwikiSources' => [],
 			'wgCirrusSearchLanguageToWikiMap' => [],
 			'wgCirrusSearchWikiToNameMap' => [],
-			'wgCirrusSearchCrossProjectSearchBlackList' => $blacklist,
+			'wgCirrusSearchCrossProjectSearchBlockList' => $blockList,
 			'wgCirrusSearchInterwikiPrefixOverrides' => $overrides,
 		];
 		$this->setMwGlobals( $myGlobals );
@@ -445,16 +443,16 @@ class InterwikiResolverTest extends CirrusIntegrationTestCase {
 		return $resolver;
 	}
 
-	protected function tearDown() : void {
+	protected function tearDown(): void {
 		MediaWikiServices::getInstance()
 			->resetServiceForTesting( 'InterwikiLookup' );
 		parent::tearDown();
 	}
 
 	private static function readDbListFile( $fileName ) {
-		\Wikimedia\suppressWarnings();
+		AtEase::suppressWarnings();
 		$fileContent = file( $fileName, FILE_IGNORE_NEW_LINES );
-		\Wikimedia\restoreWarnings();
+		AtEase::restoreWarnings();
 		return $fileContent;
 	}
 

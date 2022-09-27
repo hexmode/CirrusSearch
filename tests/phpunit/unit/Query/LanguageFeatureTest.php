@@ -14,7 +14,7 @@ class LanguageFeatureTest extends CirrusTestCase {
 
 	public function provideQueries() {
 		$tooMany = array_map(
-			function ( $l ) {
+			static function ( $l ) {
 				return (string)$l;
 			},
 			range( 1, LanguageFeature::QUERY_LIMIT + 20 )
@@ -28,23 +28,38 @@ class LanguageFeatureTest extends CirrusTestCase {
 				[]
 			],
 			'multiple' => [
-				'inlanguage:fr,en',
+				'inlanguage:fr|en',
 				[ 'langs' => [ 'fr', 'en' ] ],
-				[ 'bool' => [ 'should' => [
-					[ 'match' => [ 'language' => [ 'query' => 'fr' ] ] ],
-					[ 'match' => [ 'language' => [ 'query' => 'en' ] ] ],
-				] ] ],
+				[ 'bool' => [
+					'minimum_should_match' => 1,
+					'should' => [
+						[ 'match' => [ 'language' => [ 'query' => 'fr' ] ] ],
+						[ 'match' => [ 'language' => [ 'query' => 'en' ] ] ],
+					] ] ],
 				[]
 			],
+			'multiple with comma back compat' => [
+				'inlanguage:fr,en',
+				[ 'langs' => [ 'fr', 'en' ] ],
+				[ 'bool' => [
+					'minimum_should_match' => 1,
+					'should' => [
+						[ 'match' => [ 'language' => [ 'query' => 'fr' ] ] ],
+						[ 'match' => [ 'language' => [ 'query' => 'en' ] ] ],
+					] ] ],
+				[ [ 'cirrussearch-inlanguage-deprecate-comma' ] ]
+			],
 			'too many' => [
-				'inlanguage:' . implode( ',', $tooMany ),
+				'inlanguage:' . implode( '|', $tooMany ),
 				[ 'langs' => $actualLangs ],
-				[ 'bool' => [ 'should' => array_map(
-					function ( $l ) {
-						return [ 'match' => [ 'language' => [ 'query' => (string)$l ] ] ];
-					},
-					range( 1, LanguageFeature::QUERY_LIMIT )
-				) ] ],
+				[ 'bool' => [
+					'minimum_should_match' => 1,
+					'should' => array_map(
+						static function ( $l ) {
+							return [ 'match' => [ 'language' => [ 'query' => (string)$l ] ] ];
+						},
+						range( 1, LanguageFeature::QUERY_LIMIT )
+					) ] ],
 				[ [ 'cirrussearch-feature-too-many-conditions', 'inlanguage', LanguageFeature::QUERY_LIMIT ] ]
 			],
 		];
@@ -52,10 +67,6 @@ class LanguageFeatureTest extends CirrusTestCase {
 
 	/**
 	 * @dataProvider provideQueries()
-	 * @param string $term
-	 * @param array $expected
-	 * @param $filter
-	 * @param array $warnings
 	 */
 	public function testTooManyLanguagesWarning( $term, $expected, array $filter, $warnings ) {
 		$feature = new LanguageFeature();

@@ -4,7 +4,11 @@ namespace CirrusSearch\MetaStore;
 
 use CirrusSearch\CirrusIntegrationTestCase;
 use CirrusSearch\Connection;
-use MediaWiki\MediaWikiServices;
+use CirrusSearch\HashSearchConfig;
+use Elastica\Query;
+use Elastica\Response;
+use Elastica\ResultSet;
+use WikiMap;
 
 /**
  * Mostly stupid happy path tests. :(
@@ -14,18 +18,18 @@ use MediaWiki\MediaWikiServices;
 class MetaVersionStoreTest extends CirrusIntegrationTestCase {
 	public function testBuildDocument() {
 		list( $conn, $type ) = $this->mockConnection();
-		$doc = MetaVersionStore::buildDocument( $conn, wfWikiId(), 'content' );
+		$doc = MetaVersionStore::buildDocument( $conn, WikiMap::getCurrentWikiId(), 'content' );
 		$this->assertEquals( MetaVersionStore::METASTORE_TYPE, $doc->get( 'type' ) );
 	}
 
 	public function testUpdate() {
 		list( $conn, $type ) = $this->mockConnection();
-		$store = new MetaVersionStore( $conn );
+		$store = new MetaVersionStore( $type, $conn );
 		$doc = null;
 		$type->expects( $this->once() )
-			->method( 'addDocument' )
-			->will( $this->returnCallback( function ( $arg ) use ( &$doc ) {
-				$doc = $arg;
+			->method( 'addDocuments' )
+			->will( $this->returnCallback( static function ( $arg ) use ( &$doc ) {
+				$doc = $arg[0];
 			} ) );
 
 		$store->update( 'unittest', 'general' );
@@ -34,9 +38,7 @@ class MetaVersionStoreTest extends CirrusIntegrationTestCase {
 
 	public function testUpdateAll() {
 		list( $conn, $type ) = $this->mockConnection();
-		$store = new MetaVersionStore( $conn );
-		$type->expects( $this->never() )
-			->method( 'addDocument' );
+		$store = new MetaVersionStore( $type, $conn );
 		$type->expects( $this->once() )
 			->method( 'addDocuments' )
 			->will( $this->returnCallback( function ( $docs ) {
@@ -47,7 +49,7 @@ class MetaVersionStoreTest extends CirrusIntegrationTestCase {
 
 	public function testBuildIndexProperties() {
 		list( $conn, $type ) = $this->mockConnection();
-		$store = new MetaVersionStore( $conn );
+		$store = new MetaVersionStore( $type, $conn );
 		$properties = $store->buildIndexProperties();
 		// TODO: Would be nice to have some sort of check that these
 		// are valid to elasticsearch. But thats more on integration
@@ -56,22 +58,24 @@ class MetaVersionStoreTest extends CirrusIntegrationTestCase {
 	}
 
 	public function testFind() {
-		list( $conn, $type ) = $this->mockConnection();
-		$store = new MetaVersionStore( $conn );
-		$type->expects( $this->once() )
-			->method( 'getDocument' )
-			->with( 'version-unittest_content' );
+		$getBehavior = function ( $type ) {
+			$type->expects( $this->once() )
+				->method( 'getDocument' )
+				->with( 'version-unittest_content' );
+		};
+		list( $conn, $type ) = $this->mockConnection( $getBehavior );
+		$store = new MetaVersionStore( $type, $conn );
 		$store->find( 'unittest', 'content' );
 	}
 
 	public function testFindAll() {
-		list( $conn, $type ) = $this->mockConnection();
-		$store = new MetaVersionStore( $conn );
+		list( $conn, $index ) = $this->mockConnection();
+		$store = new MetaVersionStore( $index, $conn );
 		$search = null;
-		$type->expects( $this->any() )
-			->method( 'search' )
-			->will( $this->returnCallback( function ( $passed ) use ( &$search ) {
+		$index->method( 'search' )
+			->will( $this->returnCallback( static function ( $passed ) use ( &$search ) {
 				$search = $passed;
+				return new ResultSet( new Response( [] ), new Query(), [] );
 			} ) );
 		// What can we really test? Feels more like integration
 		// testing that needs the elasticsearch cluster. Or we
@@ -84,36 +88,40 @@ class MetaVersionStoreTest extends CirrusIntegrationTestCase {
 		$this->assertNotNull( $search );
 	}
 
-	private function mockConnection( $returnAll = false ) {
-		$config = MediaWikiServices::getInstance()
-			->getConfigFactory()
-			->makeConfig( 'CirrusSearch' );
+	private function mockConnection( $getBehavior = null ) {
+		$config = new HashSearchConfig( [
+			'CirrusSearchReplicaGroup' => 'default',
+			'CirrusSearchClusters' => [ 'default' => [ 'localhost' ] ],
+			'CirrusSearchDefaultCluster' => 'default',
+			'CirrusSearchNamespaceMappings' => [],
+			'CirrusSearchShardCount' => [
+				'content' => 1,
+				'general' => 1,
+				'archive' => 1,
+				'titlesuggest' => 1,
+			],
+			'CirrusSearchEnableArchive' => true,
+		] );
 		$conn = $this->getMockBuilder( Connection::class )
 			->setConstructorArgs( [ $config ] )
 			// call real connection on unmocked methods
-			->setMethods( [ 'getIndex' ] )
+			->onlyMethods( [ 'getIndex' ] )
 			->getMock();
 
 		$index = $this->getMockBuilder( \Elastica\Index::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$conn->expects( $this->any() )
-			->method( 'getIndex' )
+		$conn->method( 'getIndex' )
 			->with( MetaStoreIndex::INDEX_NAME )
-			->will( $this->returnValue( $index ) );
+			->willReturn( $index );
 
-		$type = $this->getMockBuilder( \Elastica\Type::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$index->expects( $this->any() )
-			->method( 'getType' )
-			->with( MetaStoreIndex::INDEX_NAME )
-			->will( $this->returnValue( $type ) );
+		$index->method( 'exists' )
+			->willReturn( true );
 
-		$type->expects( $this->any() )
-			->method( 'exists' )
-			->will( $this->returnValue( true ) );
+		if ( $getBehavior !== null ) {
+			$getBehavior( $index );
+		}
 
-		return [ $conn, $type ];
+		return [ $conn, $index ];
 	}
 }

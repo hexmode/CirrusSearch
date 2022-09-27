@@ -1,35 +1,40 @@
 {
     "analyzer": {
         "text": {
-            "type": "hindi",
+            "type": "custom",
+            "tokenizer": "standard",
             "char_filter": [
-                "word_break_helper"
-            ]
-        },
-        "text_search": {
-            "type": "hindi",
-            "char_filter": [
-                "word_break_helper"
+                "dotted_I_fix"
+            ],
+            "filter": [
+                "homoglyph_norm",
+                "lowercase",
+                "decimal_digit",
+                "indic_normalization",
+                "hindi_normalization",
+                "hindi_stop",
+                "hindi_stemmer",
+                "asciifolding"
             ]
         },
         "plain": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "short_text": {
@@ -62,12 +67,12 @@
         },
         "source_text_plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper_source_text"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper_source_text"
             ]
         },
         "suggest": {
@@ -96,45 +101,45 @@
         },
         "near_match": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "near_match_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "truncate_keyword",
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "word_prefix": {
@@ -165,6 +170,23 @@
             "tokenizer": "trigram",
             "filter": [
                 "lowercase"
+            ]
+        },
+        "text_search": {
+            "type": "custom",
+            "tokenizer": "standard",
+            "char_filter": [
+                "dotted_I_fix"
+            ],
+            "filter": [
+                "homoglyph_norm",
+                "lowercase",
+                "decimal_digit",
+                "indic_normalization",
+                "hindi_normalization",
+                "hindi_stop",
+                "hindi_stemmer",
+                "asciifolding"
             ]
         }
     },
@@ -198,6 +220,18 @@
         "truncate_keyword": {
             "type": "truncate",
             "length": 5000
+        },
+        "remove_empty": {
+            "type": "length",
+            "min": 1
+        },
+        "hindi_stop": {
+            "type": "stop",
+            "stopwords": "_hindi_"
+        },
+        "hindi_stemmer": {
+            "type": "stemmer",
+            "language": "hindi"
         },
         "dedup_asciifolding": {
             "type": "unique",
@@ -246,6 +280,12 @@
                 "(=>\\u0020",
                 ")=>\\u0020",
                 ":=>\\u0020"
+            ]
+        },
+        "dotted_I_fix": {
+            "type": "mapping",
+            "mappings": [
+                "\u0130=>I"
             ]
         }
     }

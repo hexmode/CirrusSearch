@@ -9,7 +9,7 @@
             "search_type": "dfs_query_then_fetch",
             "timeout": "20s"
         },
-        "path": "wiki\/page\/_search",
+        "path": "wiki\/_search",
         "query": {
             "_source": [
                 "namespace",
@@ -208,6 +208,7 @@
                                 "filter": [
                                     {
                                         "bool": {
+                                            "minimum_should_match": 1,
                                             "should": [
                                                 {
                                                     "match": {
@@ -229,6 +230,7 @@
                                         }
                                     }
                                 ],
+                                "minimum_should_match": 0,
                                 "should": [
                                     {
                                         "dis_max": {
@@ -480,7 +482,7 @@
             "search_type": "dfs_query_then_fetch",
             "timeout": "20s"
         },
-        "path": "itwiktionary\/page\/_search",
+        "path": "itwiktionary\/_search",
         "query": {
             "_source": [
                 "namespace",
@@ -679,6 +681,7 @@
                                 "filter": [
                                     {
                                         "bool": {
+                                            "minimum_should_match": 1,
                                             "should": [
                                                 {
                                                     "match": {
@@ -700,6 +703,7 @@
                                         }
                                     }
                                 ],
+                                "minimum_should_match": 0,
                                 "should": [
                                     {
                                         "dis_max": {
@@ -911,7 +915,7 @@
             "search_type": "dfs_query_then_fetch",
             "timeout": "20s"
         },
-        "path": "itwikibooks\/page\/_search",
+        "path": "itwikibooks\/_search",
         "query": {
             "_source": [
                 "namespace",
@@ -1110,6 +1114,7 @@
                                 "filter": [
                                     {
                                         "bool": {
+                                            "minimum_should_match": 1,
                                             "should": [
                                                 {
                                                     "match": {
@@ -1131,6 +1136,7 @@
                                         }
                                     }
                                 ],
+                                "minimum_should_match": 0,
                                 "should": [
                                     {
                                         "dis_max": {
@@ -1342,7 +1348,7 @@
             "search_type": "dfs_query_then_fetch",
             "timeout": "20s"
         },
-        "path": "itwikivoyage\/page\/_search",
+        "path": "itwikivoyage\/_search",
         "query": {
             "_source": [
                 "namespace",
@@ -1544,6 +1550,7 @@
                                             "must": [
                                                 {
                                                     "bool": {
+                                                        "minimum_should_match": 1,
                                                         "should": [
                                                             {
                                                                 "match": {
@@ -1566,6 +1573,7 @@
                                                 },
                                                 {
                                                     "bool": {
+                                                        "minimum_should_match": 1,
                                                         "should": [
                                                             {
                                                                 "match": {
@@ -1590,6 +1598,7 @@
                                         }
                                     }
                                 ],
+                                "minimum_should_match": 0,
                                 "should": [
                                     {
                                         "dis_max": {

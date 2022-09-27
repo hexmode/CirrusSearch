@@ -7,13 +7,14 @@ use ExtensionRegistry;
 use MediaWiki\Extension\SiteMatrix\SiteMatrix;
 use MediaWiki\MediaWikiServices;
 use WANObjectCache;
+use WikiMap;
 
 /**
  * InterwikiResolver suited for WMF context and uses SiteMatrix.
  */
 class SiteMatrixInterwikiResolver extends BaseInterwikiResolver {
 
-	const MATRIX_CACHE_TTL = 600;
+	private const MATRIX_CACHE_TTL = 600;
 
 	/**
 	 * @var WANObjectCache
@@ -28,9 +29,9 @@ class SiteMatrixInterwikiResolver extends BaseInterwikiResolver {
 	) {
 		parent::__construct( $config, $client, $wanCache, $srvCache );
 		$this->cache = $wanCache ?: MediaWikiServices::getInstance()->getMainWANObjectCache();
-		if ( $config->getWikiId() !== wfWikiID() ) {
+		if ( $config->getWikiId() !== WikiMap::getCurrentWikiId() ) {
 			throw new \RuntimeException( "This resolver cannot with an external wiki config. (config: " .
-				$config->getWikiId() . ", global: " . wfWikiID() );
+				$config->getWikiId() . ", global: " . WikiMap::getCurrentWikiId() );
 		}
 		if ( !ExtensionRegistry::getInstance()->isLoaded( 'SiteMatrix' ) ) {
 			throw new \RuntimeException( "SiteMatrix is required" );
@@ -45,7 +46,7 @@ class SiteMatrixInterwikiResolver extends BaseInterwikiResolver {
 	 * @return bool true if this resolver can run with the specified config
 	 */
 	public static function accepts( SearchConfig $config ) {
-		return $config->getWikiId() === wfWikiID()
+		return $config->getWikiId() === WikiMap::getCurrentWikiId()
 			&& ExtensionRegistry::getInstance()->isLoaded( 'SiteMatrix' )
 			&& $config->has( 'SiteMatrixSites' );
 	}
@@ -119,7 +120,7 @@ class SiteMatrixInterwikiResolver extends BaseInterwikiResolver {
 					$prefix = $prefixOverrides[$prefix];
 				}
 
-				if ( !in_array( $prefix, $this->config->get( 'CirrusSearchCrossProjectSearchBlackList' ) ) ) {
+				if ( !in_array( $prefix, $this->config->get( 'CirrusSearchCrossProjectSearchBlockList' ) ) ) {
 					$sisterProjects[$prefix] = $dbName;
 				}
 				$prefixesByWiki[$dbName] = $prefix;

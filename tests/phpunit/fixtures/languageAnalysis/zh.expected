@@ -2,48 +2,37 @@
     "analyzer": {
         "text": {
             "type": "custom",
-            "tokenizer": "smartcn_tokenizer",
             "char_filter": [
                 "stconvertfix",
                 "tsconvert"
             ],
-            "filter": [
-                "smartcn_stop",
-                "lowercase"
-            ]
-        },
-        "text_search": {
-            "type": "custom",
             "tokenizer": "smartcn_tokenizer",
-            "char_filter": [
-                "stconvertfix",
-                "tsconvert"
-            ],
             "filter": [
+                "homoglyph_norm",
                 "smartcn_stop",
                 "lowercase"
             ]
         },
         "plain": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "smartcn_stop",
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "smartcn_stop",
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper"
             ]
         },
         "short_text": {
@@ -76,12 +65,12 @@
         },
         "source_text_plain_search": {
             "type": "custom",
+            "char_filter": [
+                "word_break_helper_source_text"
+            ],
             "tokenizer": "standard",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "word_break_helper_source_text"
             ]
         },
         "suggest": {
@@ -110,45 +99,45 @@
         },
         "near_match": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "near_match_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "no_splitting",
             "filter": [
                 "truncate_keyword",
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "prefix_asciifolding": {
             "type": "custom",
+            "char_filter": [
+                "near_space_flattener"
+            ],
             "tokenizer": "prefix",
             "filter": [
                 "lowercase",
                 "asciifolding"
-            ],
-            "char_filter": [
-                "near_space_flattener"
             ]
         },
         "word_prefix": {
@@ -178,6 +167,19 @@
             "type": "custom",
             "tokenizer": "trigram",
             "filter": [
+                "lowercase"
+            ]
+        },
+        "text_search": {
+            "type": "custom",
+            "char_filter": [
+                "stconvertfix",
+                "tsconvert"
+            ],
+            "tokenizer": "smartcn_tokenizer",
+            "filter": [
+                "homoglyph_norm",
+                "smartcn_stop",
                 "lowercase"
             ]
         }
@@ -212,6 +214,10 @@
         "truncate_keyword": {
             "type": "truncate",
             "length": 5000
+        },
+        "remove_empty": {
+            "type": "length",
+            "min": 1
         },
         "smartcn_stop": {
             "type": "stop",
@@ -266,6 +272,12 @@
                 "(=>\\u0020",
                 ")=>\\u0020",
                 ":=>\\u0020"
+            ]
+        },
+        "dotted_I_fix": {
+            "type": "mapping",
+            "mappings": [
+                "\u0130=>I"
             ]
         },
         "stconvertfix": {

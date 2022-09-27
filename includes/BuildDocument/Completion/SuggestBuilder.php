@@ -37,32 +37,32 @@ class SuggestBuilder {
 	 * It'll be used when searching to trim the input query
 	 * and when determining close redirects
 	 */
-	const MAX_INPUT_LENGTH = 50;
+	public const MAX_INPUT_LENGTH = 50;
 
 	/**
 	 * The acceptable edit distance to group similar strings
 	 */
-	const GROUP_ACCEPTABLE_DISTANCE = 2;
+	private const GROUP_ACCEPTABLE_DISTANCE = 2;
 
 	/**
 	 * Discount suggestions based on redirects
 	 */
-	const REDIRECT_DISCOUNT = 0.1;
+	public const REDIRECT_DISCOUNT = 0.1;
 
 	/**
 	 * Discount suggestions based on cross namespace redirects
 	 */
-	const CROSSNS_DISCOUNT = 0.005;
+	public const CROSSNS_DISCOUNT = 0.005;
 
 	/**
 	 * Redirect suggestion type
 	 */
-	const REDIRECT_SUGGESTION = 'r';
+	public const REDIRECT_SUGGESTION = 'r';
 
 	/**
 	 * Title suggestion type
 	 */
-	const TITLE_SUGGESTION = 't';
+	public const TITLE_SUGGESTION = 't';
 
 	/**
 	 * Number of common prefix chars a redirect must share with the title to be
@@ -70,7 +70,7 @@ class SuggestBuilder {
 	 * This is useful not to promote Eraq as a title suggestion for Iraq
 	 * Less than 3 can lead to weird results like oba => Osama Bin Laden
 	 */
-	const REDIRECT_COMMON_PREFIX_LEN = 3;
+	private const REDIRECT_COMMON_PREFIX_LEN = 3;
 
 	/**
 	 * @var SuggestScoringMethod the scoring function
@@ -78,7 +78,7 @@ class SuggestBuilder {
 	private $scoringMethod;
 
 	/**
-	 * @var integer batch id
+	 * @var int batch id
 	 */
 	private $batchId;
 
@@ -190,10 +190,7 @@ class SuggestBuilder {
 
 		// Build cross ns suggestions
 		if ( !empty( $crossNsTitles ) ) {
-			$titles = [];
-			foreach ( $crossNsTitles as $data ) {
-				$titles[] = $data['title'];
-			}
+			$titles = array_column( $crossNsTitles, 'title' );
 			$lb = new LinkBatch( $titles );
 			$lb->setCaller( __METHOD__ );
 			$lb->execute();
@@ -398,8 +395,8 @@ class SuggestBuilder {
 	/**
 	 * Extracts from $candidates the values that are "similar" to $groupHead
 	 *
-	 * @param string $groupHead string the group "head"
-	 * @param string[] $candidates array of string the candidates
+	 * @param string $groupHead
+	 * @param string[] $candidates
 	 * @param bool $checkVariants if the candidate does not match the groupHead try to match a variant
 	 * @return array 'group' key contains the group with the
 	 *         head and its variants and 'candidates' contains the remaining
@@ -516,7 +513,7 @@ class SuggestBuilder {
 		// Indices to use for counting max_docs used by scoring functions
 		// Since we work mostly on the content namespace it seems OK to count
 		// only docs in the CONTENT index.
-		$countIndices = [ Connection::CONTENT_INDEX_TYPE ];
+		$countIndices = [ Connection::CONTENT_INDEX_SUFFIX ];
 
 		$indexBaseName = $indexBaseName ?: $connection->getConfig()->get( 'CirrusSearchIndexBaseName' );
 
@@ -524,10 +521,10 @@ class SuggestBuilder {
 		// This is needed for the scoring methods that need
 		// to normalize values against wiki size.
 		$mSearch = new MultiSearch( $connection->getClient() );
-		foreach ( $countIndices as $sourceIndexType ) {
+		foreach ( $countIndices as $sourceIndexSuffix ) {
 			$search = new Search( $connection->getClient() );
 			$search->addIndex(
-				$connection->getIndex( $indexBaseName, $sourceIndexType )
+				$connection->getIndex( $indexBaseName, $sourceIndexSuffix )
 			);
 			$search->getQuery()->setSize( 0 );
 			$mSearch->addSearch( $search );

@@ -6,8 +6,8 @@ use CirrusSearch\Hooks;
 use CirrusSearch\SearchConfig;
 use CirrusSearch\WarningCollector;
 use Elastica\Query\MoreLikeThis;
+use MediaWiki\MediaWikiServices;
 use Title;
-use WikiPage;
 
 trait MoreLikeTrait {
 	/**
@@ -126,7 +126,7 @@ trait MoreLikeTrait {
 		$query->setParams( $this->getConfig()->get( 'CirrusSearchMoreLikeThisConfig' ) );
 		$query->setFields( $moreLikeThisFields );
 
-		/** @phan-suppress-next-line PhanTypeMismatchArgument library is mis-annotated */
+		/** @phan-suppress-next-line PhanTypeMismatchArgumentProbablyReal library is mis-annotated */
 		$query->setLike( $likeDocs );
 
 		return $query;

@@ -3,12 +3,17 @@
 namespace CirrusSearch;
 
 use CirrusSearch\Parser\NamespacePrefixParser;
+use CirrusSearch\Parser\QueryParserFactory;
 use CirrusSearch\Profile\PhraseSuggesterProfileRepoWrapper;
 use CirrusSearch\Profile\SearchProfileServiceFactory;
 use CirrusSearch\Profile\SearchProfileServiceFactoryFactory;
+use CirrusSearch\Search\SearchQueryBuilder;
 use CirrusSearch\Search\TitleHelper;
 use Config;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Interwiki\InterwikiLookup;
+use MediaWiki\User\StaticUserOptionsLookup;
+use MediaWiki\User\UserOptionsLookup;
 use Title;
 
 trait CirrusTestCaseTrait {
@@ -125,7 +130,7 @@ trait CirrusTestCaseTrait {
 	 * @see Assert::callback()
 	 */
 	public function captureArgs( &$args, callable $callback = null ) {
-		return $this->callback( function ( ...$argToCapture ) use ( &$args, $callback ) {
+		return $this->callback( static function ( ...$argToCapture ) use ( &$args, $callback ) {
 			$args = $argToCapture;
 			if ( $callback !== null ) {
 				return $callback( $argToCapture );
@@ -142,8 +147,7 @@ trait CirrusTestCaseTrait {
 		$transport = $this->getMockBuilder( \Elastica\Transport\AbstractTransport::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$transport->expects( $this->any() )
-			->method( 'exec' )
+		$transport->method( 'exec' )
 			->willReturnOnConsecutiveCalls( ...$responses );
 		return $transport;
 	}
@@ -170,22 +174,42 @@ trait CirrusTestCaseTrait {
 	}
 
 	/**
+	 * @param CirrusSearchHookRunner|null $cirrusSearchHookRunner
+	 * @param UserOptionsLookup|null $userOptionsLookup
 	 * @return SearchProfileServiceFactoryFactory
 	 */
-	public function hostWikiSearchProfileServiceFactory(): SearchProfileServiceFactoryFactory {
-		return new class( $this ) implements SearchProfileServiceFactoryFactory {
-			/**
-			 * @var CirrusTestCaseTrait
-			 */
+	public function hostWikiSearchProfileServiceFactory(
+		CirrusSearchHookRunner $cirrusSearchHookRunner = null,
+		UserOptionsLookup $userOptionsLookup = null
+	): SearchProfileServiceFactoryFactory {
+		$cirrusSearchHookRunner = $cirrusSearchHookRunner ?: $this->createCirrusSearchHookRunner( [] );
+		$userOptionsLookup = $userOptionsLookup ?: $this->createStaticUserOptionsLookup();
+		return new class(
+			$this,
+			$cirrusSearchHookRunner,
+			$userOptionsLookup
+		) implements SearchProfileServiceFactoryFactory {
+			/** @var CirrusTestCaseTrait */
 			private $testCase;
+			/** @var CirrusSearchHookRunner */
+			private $cirrusHookRunner;
+			/** @var UserOptionsLookup */
+			private $userOptionsLookup;
 
-			public function __construct( $testCase ) {
+			public function __construct( $testCase, $cirrusHookRunner, $userOptionsLookup ) {
 				$this->testCase = $testCase;
+				$this->cirrusHookRunner = $cirrusHookRunner;
+				$this->userOptionsLookup = $userOptionsLookup;
 			}
 
 			public function getFactory( SearchConfig $config ): SearchProfileServiceFactory {
-				return new SearchProfileServiceFactory( $this->testCase->getInterWikiResolver( $config ),
-					$config, $this->testCase->localServerCacheForProfileService() );
+				return new SearchProfileServiceFactory(
+					$this->testCase->getInterWikiResolver( $config ),
+					$config,
+					$this->testCase->localServerCacheForProfileService(),
+					$this->cirrusHookRunner,
+					$this->userOptionsLookup
+				);
 			}
 		};
 	}
@@ -207,13 +231,13 @@ trait CirrusTestCaseTrait {
 							return [ $pieces[1], [ NS_CATEGORY ] ];
 						case 'help':
 							return [ $pieces[1], [ NS_HELP ] ];
-						case 'template';
+						case 'template':
 							return [ $pieces[1], [ NS_TEMPLATE ] ];
 						case 'category_talk':
 							return [ $pieces[1], [ NS_CATEGORY_TALK ] ];
 						case 'help_talk':
 							return [ $pieces[1], [ NS_HELP_TALK ] ];
-						case 'template_talk';
+						case 'template_talk':
 							return [ $pieces[1], [ NS_TEMPLATE_TALK ] ];
 						case 'file':
 							return [ $pieces[1], [ NS_FILE ] ];
@@ -293,4 +317,37 @@ trait CirrusTestCaseTrait {
 		);
 		return $bagOSTuff;
 	}
+
+	/**
+	 * @param SearchConfig $searchConfig
+	 * @param string $query
+	 * @return SearchQueryBuilder
+	 */
+	public function getNewFTSearchQueryBuilder( SearchConfig $searchConfig, string $query ): SearchQueryBuilder {
+		return SearchQueryBuilder::newFTSearchQueryBuilder( $searchConfig, $query,
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() );
+	}
+
+	/**
+	 * @param SearchConfig $config
+	 * @return \CirrusSearch\Parser\QueryParser|\CirrusSearch\Parser\QueryStringRegex\QueryStringRegexParser
+	 */
+	public function createNewFullTextQueryParser( SearchConfig $config ) {
+		return QueryParserFactory::newFullTextQueryParser( $config,
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() );
+	}
+
+	public function createCirrusSearchHookRunner( $hooks = [] ): CirrusSearchHookRunner {
+		return new CirrusSearchHookRunner( $this->createHookContainer( $hooks ) );
+	}
+
+	public function createStaticUserOptionsLookup( array $userMap = [], array $defaults = [] ) {
+		return new StaticUserOptionsLookup( $userMap, $defaults );
+	}
+
+	/**
+	 * @param callable[] $hooks
+	 * @return HookContainer
+	 */
+	abstract protected function createHookContainer( $hooks = [] );
 }

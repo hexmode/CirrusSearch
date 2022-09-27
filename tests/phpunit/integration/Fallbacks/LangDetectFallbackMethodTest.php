@@ -32,8 +32,7 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 			->willReturn( [ 'searcherMetrics' => 'called' ] );
 
 		$mock = $this->createMock( SearcherFactory::class );
-		$mock->expects( $this->any() )
-			->method( 'makeSearcher' )
+		$mock->method( 'makeSearcher' )
 			->willReturn( $searcherMock );
 		return $mock;
 	}
@@ -120,7 +119,7 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 			'_wikiID' => 'targetwiki',
 			'LanguageCode' => 'fr',
 		] );
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder( $config, $query, $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( $config, $query )
 			->setAllowRewrite( true )
 			->build();
 		$expectedRewrittenResults = $secondTryNumResults >= 0 ?
@@ -143,7 +142,8 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 			$this->getInterwikiMock( $targetWikiConfig, $returnedLang !== 'en' ? $returnedLang : null ) );
 
 		$initialResults = DummySearchResultSet::fakeTotalHits( $this->newTitleHelper(), $initialNumResults );
-		$context = new FallbackRunnerContextImpl( $initialResults, $searcherFactory, $this->namespacePrefixParser() );
+		$context = new FallbackRunnerContextImpl( $initialResults, $searcherFactory,
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() );
 		$this->assertEquals( $expectedScoreApprox, $fallback->successApproximation( $context ) );
 		if ( $expectedScoreApprox > 0 ) {
 			$status = $fallback->rewrite( $context );
@@ -183,8 +183,7 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 			'LanguageCode' => 'fr',
 		] );
 
-		$query =
-			SearchQueryBuilder::newFTSearchQueryBuilder( $config, 'foo', $this->namespacePrefixParser() )
+		$query = $this->getNewFTSearchQueryBuilder( $config, 'foo' )
 				->setAllowRewrite( $allowRewrite )
 				->build();
 
@@ -194,7 +193,8 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 			$this->getInterwikiMock( $targetWikiConfig, $allowRewrite ? 'fr' : null ) );
 
 		$initialResults = DummySearchResultSet::fakeTotalHits( $this->newTitleHelper(), 0 );
-		$context = new FallbackRunnerContextImpl( $initialResults, $searcherFactory, $this->namespacePrefixParser() );
+		$context = new FallbackRunnerContextImpl( $initialResults, $searcherFactory,
+			$this->namespacePrefixParser(), $this->createCirrusSearchHookRunner() );
 		$this->assertEquals( $expectedScore, $fallback->successApproximation( $context ) );
 	}
 
@@ -215,28 +215,22 @@ class LangDetectFallbackMethodTest extends CirrusIntegrationTestCase {
 	}
 
 	public function testBuild() {
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder(
-				new HashSearchConfig( [] ),
-				'foo bar',
-				$this->namespacePrefixParser()
+		$query = $this->getNewFTSearchQueryBuilder( new HashSearchConfig( [] ), 'foo bar' )
+			->setCrossLanguageSearch( CrossSearchStrategy::hostWikiOnlyStrategy() )
+			->build();
+		$this->assertNull( LangDetectFallbackMethod::build( $query, [], new EmptyInterwikiResolver() ) );
+
+		$query = $this->getNewFTSearchQueryBuilder(
+				new HashSearchConfig( [ 'CirrusSearchEnableAltLanguage' => false ] ),
+				'foo bar'
 			)
 			->setCrossLanguageSearch( CrossSearchStrategy::hostWikiOnlyStrategy() )
 			->build();
 		$this->assertNull( LangDetectFallbackMethod::build( $query, [], new EmptyInterwikiResolver() ) );
 
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder(
+		$query = $this->getNewFTSearchQueryBuilder(
 				new HashSearchConfig( [ 'CirrusSearchEnableAltLanguage' => false ] ),
-				'foo bar',
-				$this->namespacePrefixParser()
-			)
-			->setCrossLanguageSearch( CrossSearchStrategy::hostWikiOnlyStrategy() )
-			->build();
-		$this->assertNull( LangDetectFallbackMethod::build( $query, [], new EmptyInterwikiResolver() ) );
-
-		$query = SearchQueryBuilder::newFTSearchQueryBuilder(
-				new HashSearchConfig( [ 'CirrusSearchEnableAltLanguage' => false ] ),
-				'foo bar',
-				$this->namespacePrefixParser()
+				'foo bar'
 			)
 			->setCrossLanguageSearch( CrossSearchStrategy::hostWikiOnlyStrategy() )
 			->build();

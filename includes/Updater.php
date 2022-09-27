@@ -6,8 +6,10 @@ use CirrusSearch\BuildDocument\BuildDocument;
 use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\ProperPageIdentity;
 use TextContent;
 use Title;
+use WikiMap;
 use Wikimedia\Assert\Assert;
 use WikiPage;
 
@@ -116,13 +118,14 @@ class Updater extends ElasticsearchIntermediary {
 				return [ null, $redirects ];
 			}
 
-			// Never. Ever. Index. Negative. Namespaces.
-			if ( $title->getNamespace() < 0 ) {
+			// Don't index special pages, interwiki links, bad namespaces, etc
+			$logger = LoggerFactory::getInstance( 'CirrusSearch' );
+			if ( !$title->canExist() ) {
+				$logger->debug( "Ignoring an update for a page that cannot exist: $titleText" );
 				return [ null, $redirects ];
 			}
 
 			$page = WikiPage::factory( $title );
-			$logger = LoggerFactory::getInstance( 'CirrusSearch' );
 			if ( !$page->exists() ) {
 				$logger->debug( "Ignoring an update for a nonexistent page: $titleText" );
 				return [ null, $redirects ];
@@ -140,7 +143,7 @@ class Updater extends ElasticsearchIntermediary {
 			$this->updated[] = $titleText;
 			if ( $content->isRedirect() ) {
 				$redirects[] = $page;
-				$target = $content->getUltimateRedirectTarget();
+				$target = $content->getRedirectTarget();
 				if ( $target->equals( $page->getTitle() ) ) {
 					// This doesn't warn about redirect loops longer than one but we'll catch those anyway.
 					$logger->info( "Title redirecting to itself. Skip indexing" );
@@ -179,7 +182,7 @@ class Updater extends ElasticsearchIntermediary {
 	public function updatePages( $pages, $flags ) {
 		// Don't update the same page twice. We shouldn't, but meh
 		$pageIds = [];
-		$pages = array_filter( $pages, function ( WikiPage $page ) use ( &$pageIds ) {
+		$pages = array_filter( $pages, static function ( WikiPage $page ) use ( &$pageIds ) {
 			if ( !in_array( $page->getId(), $pageIds ) ) {
 				$pageIds[] = $page->getId();
 				return true;
@@ -190,13 +193,14 @@ class Updater extends ElasticsearchIntermediary {
 		$titles = $this->pagesToTitles( $pages );
 		Job\OtherIndex::queueIfRequired( $this->connection->getConfig(), $titles, $this->writeToClusterName );
 
-		$allDocuments = array_fill_keys( $this->connection->getAllIndexTypes(), [] );
+		$allDocuments = array_fill_keys( $this->connection->getAllIndexSuffixes(), [] );
 		$services = MediaWikiServices::getInstance();
 		$builder = new BuildDocument(
 			$this->connection,
 			$services->getDBLoadBalancer()->getConnection( DB_REPLICA ),
 			$services->getParserCache(),
-			$services->getRevisionStore()
+			$services->getRevisionStore(),
+			new CirrusSearchHookRunner( $services->getHookContainer() )
 		);
 		foreach ( $builder->initialize( $pages, $flags ) as $document ) {
 			// This isn't really a property of the connection, so it doesn't matter
@@ -206,12 +210,12 @@ class Updater extends ElasticsearchIntermediary {
 		}
 
 		$count = 0;
-		foreach ( $allDocuments as $indexType => $documents ) {
-			$this->pushElasticaWriteJobs( $documents, function ( array $chunk, string $cluster ) use ( $indexType ) {
+		foreach ( $allDocuments as $indexSuffix => $documents ) {
+			$this->pushElasticaWriteJobs( $documents, static function ( array $chunk, ClusterSettings $cluster ) use ( $indexSuffix ) {
 				return Job\ElasticaWrite::build(
 					$cluster,
 					'sendData',
-					[ $indexType, $chunk ]
+					[ $indexSuffix, $chunk ]
 				);
 			} );
 			$count += count( $documents );
@@ -221,29 +225,79 @@ class Updater extends ElasticsearchIntermediary {
 	}
 
 	/**
+	 * @param ProperPageIdentity $page
+	 * @param string $tagField
+	 * @param string $tagPrefix
+	 * @param string|string[]|null $tagNames
+	 * @param int|int[]|null $tagWeights
+	 */
+	public function updateWeightedTags(
+		ProperPageIdentity $page, string $tagField, string $tagPrefix, $tagNames = null, $tagWeights = null
+	) {
+		Assert::precondition( $page->exists(), "page must exist" );
+		$docId = $this->connection->getConfig()->makeId( $page->getId() );
+		$indexSuffix = $this->connection->getIndexSuffixForNamespace( $page->getNamespace() );
+		$this->pushElasticaWriteJobs( [ $docId ], static function ( array $docIds, ClusterSettings $cluster ) use (
+			$docId, $indexSuffix, $tagField, $tagPrefix, $tagNames, $tagWeights
+		) {
+			$tagWeights = ( $tagWeights === null ) ? null : [ $docId => $tagWeights ];
+			return Job\ElasticaWrite::build(
+				$cluster,
+				'sendUpdateWeightedTags',
+				[ $indexSuffix, $docIds, $tagField, $tagPrefix, $tagNames, $tagWeights ]
+			);
+		} );
+	}
+
+	/**
+	 * @param ProperPageIdentity $page
+	 * @param string $tagField
+	 * @param string $tagPrefix
+	 */
+	public function resetWeightedTags( ProperPageIdentity $page, string $tagField, string $tagPrefix ) {
+		Assert::precondition( $page->exists(), "page must exist" );
+		$docId = $this->connection->getConfig()->makeId( $page->getId() );
+		$indexSuffix = $this->connection->getIndexSuffixForNamespace( $page->getNamespace() );
+		$this->pushElasticaWriteJobs( [ $docId ], static function (
+			array $docIds, ClusterSettings $cluster
+		) use ( $indexSuffix, $tagField, $tagPrefix ) {
+			return Job\ElasticaWrite::build(
+				$cluster,
+				'sendResetWeightedTags',
+				[ $indexSuffix, $docIds, $tagField, $tagPrefix ]
+			);
+		} );
+	}
+
+	/**
 	 * Delete pages from the elasticsearch index.  $titles and $docIds must point to the
 	 * same pages and should point to them in the same order.
 	 *
 	 * @param Title[] $titles List of titles to delete.  If empty then skipped other index
 	 *      maintenance is skipped.
 	 * @param int[]|string[] $docIds List of elasticsearch document ids to delete
-	 * @param string|null $indexType index from which to delete.  null means all.
-	 * @param string|null $elasticType Mapping type to use for the document
+	 * @param string|null $indexSuffix index from which to delete.  null means all.
+	 * @param array $writeJobParams Parameters passed on to ElasticaWriteJob
 	 * @return bool Always returns true.
 	 */
-	public function deletePages( $titles, $docIds, $indexType = null, $elasticType = null ) {
+	public function deletePages( $titles, $docIds, $indexSuffix = null, array $writeJobParams = [] ) {
 		Job\OtherIndex::queueIfRequired( $this->connection->getConfig(), $titles, $this->writeToClusterName );
 
 		// Deletes are fairly cheap to send, they can be batched in larger
 		// chunks. Unlikely a batch this large ever comes through.
 		$batchSize = 50;
-		$this->pushElasticaWriteJobs( $docIds, function ( array $chunk, string $cluster ) use ( $indexType, $elasticType ) {
-			return Job\ElasticaWrite::build(
-				$cluster,
-				'sendDeletes',
-				[ $chunk, $indexType, $elasticType ]
-			);
-		}, $batchSize );
+		$this->pushElasticaWriteJobs(
+			$docIds,
+			static function ( array $chunk, ClusterSettings $cluster ) use ( $indexSuffix, $writeJobParams ) {
+				return Job\ElasticaWrite::build(
+					$cluster,
+					'sendDeletes',
+					[ $chunk, $indexSuffix ],
+					$writeJobParams
+				);
+			},
+			$batchSize
+		);
 
 		return true;
 	}
@@ -259,11 +313,11 @@ class Updater extends ElasticsearchIntermediary {
 			return true;
 		}
 		$docs = $this->buildArchiveDocuments( $archived );
-		$this->pushElasticaWriteJobs( $docs, function ( array $chunk, string $cluster ) {
+		$this->pushElasticaWriteJobs( $docs, static function ( array $chunk, ClusterSettings $cluster ) {
 			return Job\ElasticaWrite::build(
 				$cluster,
 				'sendData',
-				[ Connection::ARCHIVE_INDEX_TYPE, $chunk, Connection::ARCHIVE_TYPE_NAME ],
+				[ Connection::ARCHIVE_INDEX_SUFFIX, $chunk ],
 				[ 'private_data' => true ]
 			);
 		} );
@@ -289,7 +343,7 @@ class Updater extends ElasticsearchIntermediary {
 			$doc = new \Elastica\Document( $delete['page'], [
 				'namespace' => $title->getNamespace(),
 				'title' => $title->getText(),
-				'wiki' => wfWikiID(),
+				'wiki' => WikiMap::getCurrentWikiId(),
 			] );
 			$doc->setDocAsUpsert( true );
 			$doc->setRetryOnConflict( $this->connection->getConfig()->getElement( 'CirrusSearchUpdateConflictRetryCount' ) );
@@ -308,8 +362,9 @@ class Updater extends ElasticsearchIntermediary {
 	public function updateLinkedArticles( $titles ) {
 		$pages = [];
 		foreach ( $titles as $title ) {
-			// Special pages don't get updated
-			if ( !$title || $title->getNamespace() < 0 ) {
+			// Special pages don't get updated, we only index
+			// actual existing pages.
+			if ( !$title || !$title->canExist() ) {
 				continue;
 			}
 
@@ -325,11 +380,11 @@ class Updater extends ElasticsearchIntermediary {
 					// Redirect to itself or broken redirect? ignore.
 					continue;
 				}
-				$page = new WikiPage( $target );
-				if ( !$page->exists() ) {
+				if ( !$target->exists() ) {
 					// Skip redirects to nonexistent pages
 					continue;
 				}
+				$page = WikiPage::factory( $target );
 			}
 			if ( $page->isRedirect() ) {
 				// This is a redirect to a redirect which doesn't count in the search score any way.
@@ -370,14 +425,30 @@ class Updater extends ElasticsearchIntermediary {
 		// Elasticsearch has a queue capacity of 50 so if $documents contains 50 pages it could bump up
 		// against the max.  So we chunk it and do them sequentially.
 		$jobs = [];
+		$config = $this->connection->getConfig();
 		$clusters = $this->elasticaWriteClusters();
+
 		foreach ( array_chunk( $items, $batchSize ) as $chunked ) {
+			// Queueing one job per cluster ensures isolation. If one clusters falls
+			// behind on writes the others shouldn't notice.
+			// Unfortunately queueing a job per cluster results in quite a few
+			// jobs to run. If the job queue can't keep up some clusters can
+			// be run in-process. Any failures will queue themselves for later
+			// execution.
 			foreach ( $clusters as $cluster ) {
-				$jobs[] = $factory( $chunked, $cluster );
+				$clusterSettings = new ClusterSettings( $config, $cluster );
+				$job = $factory( $chunked, $clusterSettings );
+				if ( $clusterSettings->isIsolated() ) {
+					$jobs[] = $job;
+				} else {
+					$job->run();
+				}
 			}
 		}
 
-		JobQueueGroup::singleton()->push( $jobs );
+		if ( $jobs ) {
+			JobQueueGroup::singleton()->push( $jobs );
+		}
 	}
 
 	private function elasticaWriteClusters(): array {

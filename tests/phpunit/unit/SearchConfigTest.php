@@ -3,6 +3,7 @@
 namespace CirrusSearch;
 
 use CirrusSearch\Profile\SearchProfileService;
+use WikiMap;
 
 /**
  * @group CirrusSearch
@@ -16,14 +17,14 @@ class SearchConfigTest extends CirrusTestCase {
 			'test' => 1,
 			'one' => [ 'two' => 3 ]
 		] );
-		$this->assertSame( wfWikiID(), $config->getWikiId() );
+		$this->assertSame( WikiMap::getCurrentWikiId(), $config->getWikiId() );
 		$this->assertSame( 1, $config->get( 'test' ) );
 		$this->assertTrue( $config->has( 'test' ) );
 		$this->assertNull( $config->get( 'unknown' ) );
 		$this->assertFalse( $config->has( 'unknown' ) );
 		$this->assertSame( [ 'two' => 3 ], $config->getElement( 'one' ) );
 		$this->assertSame( 3, $config->getElement( 'one', 'two' ) );
-		$this->assertSame( wfWikiID(), $config->getWikiId() );
+		$this->assertSame( WikiMap::getCurrentWikiId(), $config->getWikiId() );
 	}
 
 	public function testMakeId() {
@@ -39,7 +40,7 @@ class SearchConfigTest extends CirrusTestCase {
 			$this->assertSame( 123, $config->makePageId( 'mywiki|hop|123' ) );
 			$this->fail();
 		} catch ( \Exception $e ) {
-			$this->assertSame( $e->getMessage(), "Invalid document id: mywiki|hop|123" );
+			$this->assertSame( "Invalid document id: mywiki|hop|123", $e->getMessage() );
 		}
 
 		$config = new HashSearchConfig( [
@@ -93,7 +94,7 @@ class SearchConfigTest extends CirrusTestCase {
 
 	public function testWikiIDOverride() {
 		$config = new HashSearchConfig( [] );
-		$this->assertSame( wfWikiID(), $config->getWikiId() );
+		$this->assertSame( WikiMap::getCurrentWikiId(), $config->getWikiId() );
 		$config = new HashSearchConfig( [ '_wikiID' => 'myverycustomwiki' ] );
 		$this->assertSame( 'myverycustomwiki', $config->getWikiId() );
 	}

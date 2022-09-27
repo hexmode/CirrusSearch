@@ -2,6 +2,7 @@
 
 namespace CirrusSearch;
 
+use Elastica\Exception\Bulk\ResponseException as BulkResponseException;
 use Elastica\Exception\PartialShardFailureException;
 use Elastica\Exception\ResponseException;
 use MediaWiki\Logger\LoggerFactory;
@@ -28,8 +29,7 @@ class ElasticaErrorHandler {
 	 */
 	public static function extractMessage( \Elastica\Exception\ExceptionInterface $exception ) {
 		$error = self::extractFullError( $exception );
-
-		return $error['type'] . ': ' . $error['reason'];
+		return self::formatMessage( $error );
 	}
 
 	/**
@@ -40,7 +40,18 @@ class ElasticaErrorHandler {
 	 *  so we have to suppress those warnings.
 	 */
 	public static function extractFullError( \Elastica\Exception\ExceptionInterface $exception ): array {
-		if ( !( $exception instanceof ResponseException ) ) {
+		if ( $exception instanceof BulkResponseException ) {
+			$actionReasons = [];
+			foreach ( $exception->getActionExceptions() as $actionException ) {
+				$actionReasons[] = $actionException->getMessage() . ': '
+					. self::formatMessage( $actionException->getResponse()->getFullError() );
+			}
+			return [
+				'type' => 'bulk',
+				'reason' => $exception->getMessage(),
+				'actionReasons' => $actionReasons,
+			];
+		} elseif ( !( $exception instanceof ResponseException ) ) {
 			// simulate the basic full error structure
 			return [
 				'type' => 'unknown',
@@ -124,9 +135,13 @@ class ElasticaErrorHandler {
 					'^search_parse_exception$',
 					'^query_shard_exception$',
 					'^illegal_argument_exception$',
-					'^too_many_clauses$'
+					'^too_many_clauses$',
+					'^parsing_exception$',
+					'^parse_exception$',
+					'^script_exception$',
 				],
-				'msg_regexes' => [],
+				'msg_regexes' => [
+				],
 			],
 			'failed' => [
 				'type_regexes' => [
@@ -134,16 +149,20 @@ class ElasticaErrorHandler {
 					'^remote_transport_exception$',
 					'^search_context_missing_exception$',
 					'^null_pointer_exception$',
-					'^elasticsearch_timeout_exception$'
+					'^elasticsearch_timeout_exception$',
+					'^retry_on_primary_exception$',
+					'^index_not_found_exception$',
 				],
 				// These are exceptions thrown by elastica itself
 				'msg_regexes' => [
 					'^Couldn\'t connect to host',
 					'^No enabled connection',
 					'^Operation timed out',
+					'^Status code 503',
 				],
 			],
 		];
+
 		foreach ( $heuristics as $type => $heuristic ) {
 			$regex = implode( '|', $heuristic['type_regexes'] );
 			if ( $regex && preg_match( "/$regex/", $error['type'] ) ) {
@@ -191,7 +210,7 @@ class ElasticaErrorHandler {
 		if ( !isset( $error['root_cause'][0]['type'] ) ) {
 			return [
 				Status::newFatal( 'cirrussearch-backend-error' ),
-				$error['type'] . ': ' . $error['reason']
+				self::formatMessage( $error )
 			];
 		}
 
@@ -234,6 +253,16 @@ class ElasticaErrorHandler {
 			];
 		}
 
+		if ( $cause['type'] === 'script_exception' ) {
+			// do not use $cause which won't contain the caused_by chain
+			$formattedMessage = self::formatMessage( $error['caused_by'] );
+			$formattedMessage .= "\n\t" . implode( "\n\t", $cause['script_stack'] ) . "\n";
+			return [
+				Status::newFatal( 'cirrussearch-backend-error' ),
+				$formattedMessage
+			];
+		}
+
 		if ( preg_match( '/(^|_)regex_/', $cause['type'] ) ) {
 			$syntaxError = $cause['reason'];
 			$errorMessage = 'unknown';
@@ -262,8 +291,41 @@ class ElasticaErrorHandler {
 
 		return [
 			Status::newFatal( 'cirrussearch-backend-error' ),
-			$cause['type'] . ': ' . $cause['reason']
+			self::formatMessage( $cause )
 		];
+	}
+
+	/**
+	 * Takes an error and converts it into a useful message. Mostly this is to deal with
+	 * errors where the useful part is hidden inside a caused_by chain.
+	 * WARNING: In some circumstances, like bulk update failures, this could be multiple
+	 * megabytes.
+	 *
+	 * @param array $error An error array, such as the one returned by extractFullError().
+	 * @return string
+	 */
+	protected static function formatMessage( array $error ) {
+		if ( isset( $error['actionReasons'] ) ) {
+			$message = $error['type'] . ': ' . $error['reason'];
+			foreach ( $error['actionReasons'] as $actionReason ) {
+				$message .= "  - $actionReason\n";
+			}
+			return $message;
+		}
+
+		$causeChain = [];
+		$errorCursor = $error;
+		while ( isset( $errorCursor['caused_by'] ) ) {
+			$errorCursor = $errorCursor['caused_by'];
+			if ( $errorCursor['reason'] ) {
+				$causeChain[] = $errorCursor['reason'];
+			}
+		}
+		$message = $error['type'] . ': ' . $error['reason'];
+		if ( $causeChain ) {
+			$message .= ' (' . implode( ' -> ', array_reverse( $causeChain ) ) . ')';
+		}
+		return $message;
 	}
 
 }

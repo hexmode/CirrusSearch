@@ -1,7 +1,7 @@
 {
     "__main__": {
         "description": "archive search for 'Cheese'",
-        "path": "wiki_archive\/archive\/_search",
+        "path": "wiki_archive\/_search",
         "params": {
             "timeout": "20s",
             "search_type": "dfs_query_then_fetch"
@@ -53,10 +53,10 @@
                     ]
                 }
             },
-            "size": 20,
             "stats": [
                 "archive"
-            ]
+            ],
+            "size": 20
         },
         "options": {
             "timeout": "20s",

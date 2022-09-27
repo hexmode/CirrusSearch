@@ -2,6 +2,7 @@
 
 namespace CirrusSearch;
 
+use Elastica\Multi\ResultSet;
 use Elastica\Multi\Search as MultiSearch;
 use MediaWiki\Logger\LoggerFactory;
 use Title;
@@ -60,10 +61,7 @@ class OtherIndexesUpdater extends Updater {
 		$namespace = $title->getNamespace();
 		$indices = [];
 		foreach ( $config->get( 'CirrusSearchExtraIndexes' )[$namespace] ?? [] as $indexName ) {
-			$ei = new ExternalIndex( $config, $indexName );
-			if ( $cluster === null || !$ei->isClusterBlacklisted( $cluster ) ) {
-				$indices[] = $ei;
-			}
+			$indices[] = new ExternalIndex( $config, $indexName );
 		}
 		return $indices;
 	}
@@ -106,11 +104,10 @@ class OtherIndexesUpdater extends Updater {
 		foreach ( $titles as $title ) {
 			foreach ( self::getExternalIndexes( $this->connection->getConfig(), $title ) as $otherIndex ) {
 				$searchIndex = $otherIndex->getSearchIndex( $readClusterName );
-				$type = $this->connection->getPageType( $searchIndex );
 				$query = $this->queryForTitle( $title );
-				$search = $type->createSearch( $query );
+				$search = $this->connection->getIndex( $searchIndex )->createSearch( $query );
 				$findIdsMultiSearch->addSearch( $search );
-				$findIdsClosures[] = function ( $docId ) use ( $otherIndex, &$updates, $title ) {
+				$findIdsClosures[] = static function ( $docId ) use ( $otherIndex, &$updates, $title ) {
 					// The searchIndex, including the cluster specified, is needed
 					// as this gets passed to the ExternalIndex constructor in
 					// the created jobs.
@@ -132,37 +129,35 @@ class OtherIndexesUpdater extends Updater {
 		}
 
 		// Look up the ids and run all closures to build the list of updates
-		$this->start( new MultiSearchRequestLog(
-			$this->connection->getClient(),
-			'searching for {numIds} ids in other indexes',
-			'other_idx_lookup',
-			[ 'numIds' => $findIdsClosuresCount ]
-		) );
-		$findIdsMultiSearchResult = $findIdsMultiSearch->search();
-		try {
-			$this->success();
+		$result = $this->runMSearch(
+			$findIdsMultiSearch,
+			new MultiSearchRequestLog(
+				$this->connection->getClient(),
+				'searching for {numIds} ids in other indexes',
+				'other_idx_lookup',
+				[ 'numIds' => $findIdsClosuresCount ]
+			)
+		);
+		if ( $result->isGood() ) {
+			/** @var ResultSet $findIdsMultiSearchResult */
+			$findIdsMultiSearchResult = $result->getValue();
 			foreach ( $findIdsClosures as $i => $closure ) {
 				$results = $findIdsMultiSearchResult[$i]->getResults();
 				if ( count( $results ) ) {
 					$closure( $results[0]->getId() );
 				}
 			}
-		} catch ( \Elastica\Exception\ExceptionInterface $e ) {
-			$this->failure( $e );
-			return;
+			$this->runUpdates( reset( $titles ), $updates );
 		}
-
-		$this->runUpdates( reset( $titles ), $updates );
 	}
 
 	protected function runUpdates( Title $title, array $updates ) {
-		// These are split into a job per index so one index
-		// being frozen doesn't block updates to other indexes
-		// in the same update. Also because the external indexes
-		// may be configured to write to different clusters.
-		foreach ( $updates as $data ) {
-			list( $otherIndex, $actions ) = $data;
-			$this->pushElasticaWriteJobs( $actions, function ( array $chunk, string $cluster ) use ( $otherIndex ) {
+		// These are split into a job per index because the external indexes
+		// may be configured to write to different clusters. This maintains
+		// isolation of writes between clusters so one slow cluster doesn't
+		// drag down the others.
+		foreach ( $updates as [ $otherIndex, $actions ] ) {
+			$this->pushElasticaWriteJobs( $actions, function ( array $chunk, ClusterSettings $cluster ) use ( $otherIndex ) {
 				// Name of the index to write to on whatever cluster is connected to
 				$indexName = $otherIndex->getIndexName();
 				// Index name and, potentially, a replica group identifier. Needed to
@@ -183,7 +178,7 @@ class OtherIndexesUpdater extends Updater {
 	 * @param string $reason
 	 */
 	private function logFailure( array $titles, $reason = '' ) {
-		$articleIDs = array_map( function ( Title $title ) {
+		$articleIDs = array_map( static function ( Title $title ) {
 			return $title->getArticleID();
 		}, $titles );
 		if ( $reason ) {

@@ -115,8 +115,19 @@ class FullTextQueryStringQueryBuilder implements FullTextQueryBuilder {
 		// Find prefix matches and force them to only match against the plain analyzed fields.  This
 		// prevents prefix matches from getting confused by stemming.  Users really don't expect stemming
 		// in prefix queries.
+		$maxWildcards = $this->config->get( 'CirrusSearchQueryStringMaxWildcards' );
 		$query = self::replaceAllPartsOfQuery( $query, '/\w+\*(?:\w*\*?)*/u',
-			function ( $matches ) use ( $searchContext ) {
+			function ( $matches ) use ( $searchContext, $maxWildcards ) {
+				// hack to detect pathological wildcard
+				// relates to T102589 but elastic7 seems to have broken our fix by stopping
+				// to propagate the max_determinized_states param to the wildcard queries
+				// We might consider fixing this upstream again when switch to opensearch.
+				// In the meantine simply count the number of wildcard chars and mimic the previous
+				// if we detect such problematic queries
+				if ( self::isPathologicalWildcard( $matches[ 0 ][ 0 ], $maxWildcards ) ) {
+					$searchContext->addWarning( 'cirrussearch-regex-too-complex-error' );
+					$searchContext->setResultsPossible( false );
+				}
 				$term = $searchContext->escaper()->fixupQueryStringPart( $matches[ 0 ][ 0 ] );
 				return [
 					'escaped' => self::switchSearchToExactForWildcards( $searchContext, $term ),
@@ -130,11 +141,7 @@ class FullTextQueryStringQueryBuilder implements FullTextQueryBuilder {
 		foreach ( $query as $queryPart ) {
 			if ( isset( $queryPart[ 'escaped' ] ) ) {
 				$escapedQuery[] = $queryPart[ 'escaped' ];
-				if ( isset( $queryPart[ 'nonAll' ] ) ) {
-					$nonAllQuery[] = $queryPart[ 'nonAll' ];
-				} else {
-					$nonAllQuery[] = $queryPart[ 'escaped' ];
-				}
+				$nonAllQuery[] = $queryPart['nonAll'] ?? $queryPart['escaped'];
 				continue;
 			}
 			if ( isset( $queryPart[ 'raw' ] ) ) {
@@ -235,6 +242,15 @@ class FullTextQueryStringQueryBuilder implements FullTextQueryBuilder {
 		}
 	}
 
+	private function isPathologicalWildcard( string $term, int $maxWildcard ): bool {
+		$ret = preg_match_all( "/[*?]+/", $term );
+		if ( $ret === false ) {
+			// we failed the regex, out of caution fail the query
+			return true;
+		}
+		return $ret > $maxWildcard;
+	}
+
 	/**
 	 * Attempt to build a degraded query from the query already built into $context. Must be
 	 * called *after* self::build().
@@ -310,7 +326,7 @@ class FullTextQueryStringQueryBuilder implements FullTextQueryBuilder {
 	 *
 	 * @param string[] $fields
 	 * @param string $queryString
-	 * @param int $phraseSlop phrase slop
+	 * @param int $phraseSlop
 	 * @return \Elastica\Query\QueryString
 	 */
 	private function buildQueryString( array $fields, $queryString, $phraseSlop ) {

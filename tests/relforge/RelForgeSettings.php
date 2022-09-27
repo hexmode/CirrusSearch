@@ -9,7 +9,7 @@
 require_once __DIR__ . "/../jenkins/Jenkins.php";
 
 // pop score is global
-$wgHooks['CirrusSearchMappingConfig'][] = function ( array &$config, $mappingConfigBuilder ) {
+$wgHooks['CirrusSearchMappingConfig'][] = static function ( array &$config, $mappingConfigBuilder ) {
 	$config['page']['properties']['popularity_score'] = [
 		'type' => 'double',
 	];
@@ -33,11 +33,12 @@ $wgCirrusSearchCompletionSuggesterSubphrases = [
 ];
 
 $wgCirrusSearchWikimediaExtraPlugin['token_count_router'] = true;
-// Reset this value in case it was set to do some testing
+// Reset these values in case they were set to do some testing
 // in FullyFeaturedConfig.php
+$wgCirrusSearchICUNormalizationUnicodeSetFilter = null;
 $wgCirrusSearchICUFoldingUnicodeSetFilter = null;
 
-// Move to prod like defaults now
+// Move to prod-like defaults now
 $wgCirrusSearchSimilarityProfile = 'wmf_defaults';
 $wgCirrusSearchRescoreProfile = 'wsum_inclinks';
 $wgCirrusSearchFullTextQueryBuilderProfile = 'perfield_builder';

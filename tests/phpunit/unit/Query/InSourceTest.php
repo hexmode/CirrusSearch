@@ -142,7 +142,7 @@ class InSourceTest extends CirrusTestCase {
 	 * @throws \MWException
 	 */
 	public function testRegex( $query, $expectedRemaining, $filterValue, $insensitive ) {
-		$filterCallback = function ( SourceRegex $x ) use ( $filterValue, $insensitive ) {
+		$filterCallback = static function ( SourceRegex $x ) use ( $filterValue, $insensitive ) {
 			return $filterValue === $x->getParam( 'regex' ) &&
 				   $x->getParam( 'field' ) === 'source_text' &&
 				   $x->getParam( 'ngram_field' ) === 'source_text.trigram' &&
@@ -212,6 +212,12 @@ class InSourceTest extends CirrusTestCase {
 				'foo"bar',
 				true,
 			],
+			'if the last character of the pattern searched is "/"' => [
+				'insource:/\/Documentation\//',
+				'',
+				'\/Documentation\/',
+				false,
+			],
 		];
 	}
 
@@ -224,5 +230,23 @@ class InSourceTest extends CirrusTestCase {
 				'insensitive' => false,
 			],
 			[ [ 'cirrussearch-feature-not-available', 'insource regex' ] ] );
+	}
+
+	public function testEmptyRegex() {
+		$config = new HashSearchConfig( [
+			'CirrusSearchEnableRegex' => true,
+			'CirrusSearchWikimediaExtraPlugin' => [ 'regex' => [ 'use' => true ] ]
+		], [ HashSearchConfig::FLAG_INHERIT ] );
+		$feature = new InSourceFeature( $config );
+		$term = 'insource://';
+		$this->assertParsedValue( $feature, $term,
+			[
+				'type' => 'regex',
+				'pattern' => '',
+				'insensitive' => false,
+			],
+			[ [ 'cirrussearch-regex-empty-expression', 'insource' ] ] );
+
+		$this->assertNoResultsPossible( $feature, $term );
 	}
 }

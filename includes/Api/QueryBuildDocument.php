@@ -6,6 +6,7 @@ use CirrusSearch\BuildDocument\BuildDocument;
 use CirrusSearch\CirrusSearch;
 use CirrusSearch\CirrusSearchHookRunner;
 use Mediawiki\MediaWikiServices;
+use WikiPage;
 
 /**
  * Generate CirrusSearch document for page.
@@ -40,9 +41,8 @@ class QueryBuildDocument extends \ApiQueryBase {
 
 		if ( $engine instanceof CirrusSearch ) {
 			$pages = [];
-			$wikiPageFactory = $services->getWikiPageFactory();
 			foreach ( $this->getPageSet()->getGoodTitles() as $pageId => $title ) {
-				$pages[] = $wikiPageFactory->newFromTitle( $title );
+				$pages[] = WikiPage::factory( $title );
 			}
 
 			$builder = new BuildDocument(
@@ -50,8 +50,7 @@ class QueryBuildDocument extends \ApiQueryBase {
 				$this->getDB(),
 				$services->getParserCache(),
 				$services->getRevisionStore(),
-				new CirrusSearchHookRunner( $services->getHookContainer() ),
-				$services->getBacklinkCacheFactory()
+				new CirrusSearchHookRunner( $services->getHookContainer() )
 			);
 			$docs = $builder->initialize( $pages, BuildDocument::INDEX_EVERYTHING );
 			foreach ( $docs as $pageId => $doc ) {

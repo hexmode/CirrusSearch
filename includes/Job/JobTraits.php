@@ -7,8 +7,8 @@ use CirrusSearch\Connection;
 use CirrusSearch\ExternalIndex;
 use CirrusSearch\HashSearchConfig;
 use CirrusSearch\SearchConfig;
+use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -128,7 +128,7 @@ trait JobTraits {
 	 * @return bool
 	 */
 	public function run() {
-		if ( $this->getSearchConfig()->get( MainConfigNames::DisableSearchUpdate ) ||
+		if ( $this->getSearchConfig()->get( 'DisableSearchUpdate' ) ||
 			$this->getSearchConfig()->get( 'CirrusSearchDisableUpdate' )
 		) {
 			LoggerFactory::getInstance( 'CirrusSearch' )->debug( "Skipping job: search updates disabled by config" );
@@ -152,7 +152,7 @@ trait JobTraits {
 	 * @return array options to set to add to the job param
 	 */
 	public static function buildJobDelayOptions( $jobClass, $delay ): array {
-		$jobQueue = MediaWikiServices::getInstance()->getJobQueueGroup()->get( $jobClass );
+		$jobQueue = JobQueueGroup::singleton()->get( $jobClass );
 		if ( !$delay || !$jobQueue->delayedJobsEnabled() ) {
 			return [];
 		}

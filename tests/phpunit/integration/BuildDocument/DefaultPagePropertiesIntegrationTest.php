@@ -25,7 +25,7 @@ class DefaultPagePropertiesIntegrationTest extends \MediaWikiIntegrationTestCase
 
 	public function testCreateTimestamp() {
 		$pageName = 'testCreateTimestamp' . mt_rand();
-		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $pageName ) );
+		$page = WikiPage::factory( Title::newFromText( $pageName ) );
 
 		// Control time to ensure the revision timestamps differ
 		$currentTime = 12345;

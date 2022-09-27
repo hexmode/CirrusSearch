@@ -38,7 +38,6 @@ use Title;
  */
 class MoreLikeFeatureTest extends CirrusIntegrationTestCase {
 	use SimpleKeywordFeatureTestTrait;
-	use LinkCacheTestTrait;
 
 	public function applyProvider() {
 		return [

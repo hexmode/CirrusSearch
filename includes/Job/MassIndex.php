@@ -56,7 +56,6 @@ class MassIndex extends CirrusGenericJob {
 	protected function doJob() {
 		// Reload pages from pageIds to throw into the updater
 		$pageData = [];
-		$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
 		foreach ( $this->params[ 'pageDBKeys' ] as $pageDBKey ) {
 			$title = Title::newFromDBkey( $pageDBKey );
 			// Skip any titles with broken keys.  We can't do anything with them.
@@ -67,7 +66,7 @@ class MassIndex extends CirrusGenericJob {
 				);
 				continue;
 			}
-			$pageData[] = $wikiPageFactory->newFromTitle( $title );
+			$pageData[] = WikiPage::factory( $title );
 		}
 		// Now invoke the updater!
 		$updater = Updater::build( $this->searchConfig, $this->params['cluster'] ?? null );

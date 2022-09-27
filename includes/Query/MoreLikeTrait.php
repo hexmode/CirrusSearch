@@ -70,7 +70,6 @@ trait MoreLikeTrait {
 	private function collectTitlesFromDB( $term ) {
 		$titles = [];
 		$found = [];
-		$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
 		foreach ( explode( '|', $term ) as $title ) {
 			$title = Title::newFromText( trim( $title ) );
 			while ( true ) {
@@ -89,7 +88,7 @@ trait MoreLikeTrait {
 					break;
 				}
 				// If the page was a redirect loop the while( true ) again.
-				$page = $wikiPageFactory->newFromTitle( $title );
+				$page = WikiPage::factory( $title );
 				if ( !$page->exists() ) {
 					continue 2;
 				}

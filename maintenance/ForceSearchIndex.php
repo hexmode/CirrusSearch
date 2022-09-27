@@ -8,6 +8,7 @@ use CirrusSearch\Iterator\CallbackIterator;
 use CirrusSearch\Job;
 use CirrusSearch\SearchConfig;
 use CirrusSearch\Updater;
+use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MWException;
@@ -210,7 +211,7 @@ class ForceSearchIndex extends Maintenance {
 		} else {
 			$it = $this->getDeletesIterator();
 		}
-		$jobQueueGroup = MediaWikiServices::getInstance()->getJobQueueGroup();
+		$jobQueueGroup = JobQueueGroup::singleton();
 
 		foreach ( $it as $batch ) {
 			if ( $this->indexUpdates ) {
@@ -413,8 +414,6 @@ class ForceSearchIndex extends Maintenance {
 
 		$it->setFetchColumns( [ 'log_timestamp', 'log_namespace', 'log_title', 'log_page' ] );
 
-		$it->setCaller( __METHOD__ );
-
 		return new CallbackIterator( $it, function ( $batch ) {
 			$titlesToDelete = [];
 			$docIdsToDelete = [];
@@ -448,7 +447,6 @@ class ForceSearchIndex extends Maintenance {
 		$it->setFetchColumns( $pageQuery['fields'] );
 		$it->addJoinConditions( $pageQuery['joins'] );
 		$it->addConditions( [ 'page_id' => $this->pageIds ] );
-		$it->setCaller( __METHOD__ );
 		$this->attachPageConditions( $dbr, $it, 'page' );
 
 		return $this->wrapDecodeResults( $it, 'page_id' );
@@ -468,7 +466,6 @@ class ForceSearchIndex extends Maintenance {
 		$it->addJoinConditions( [
 			'revision' => [ 'JOIN', [ 'rev_page = page_id', 'rev_id = page_latest' ] ]
 		] );
-		$it->setCaller( __METHOD__ );
 
 		$this->attachTimestampConditions( $dbr, $it, 'rev' );
 		$this->attachPageConditions( $dbr, $it, 'page' );
@@ -482,7 +479,6 @@ class ForceSearchIndex extends Maintenance {
 		$it = new BatchRowIterator( $dbr,  $pageQuery['tables'], 'page_id', $this->getBatchSize() );
 		$it->setFetchColumns( $pageQuery['fields'] );
 		$it->addJoinConditions( $pageQuery['joins'] );
-		$it->setCaller( __METHOD__ );
 		$fromId = $this->getOption( 'fromId', 0 );
 		if ( $fromId > 0 ) {
 			$it->addConditions( [
@@ -545,11 +541,10 @@ class ForceSearchIndex extends Maintenance {
 			$updater = $this->createUpdater();
 
 			$pages = [];
-			$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
 			foreach ( $batch as $row ) {
 				// No need to call Updater::traceRedirects here because we know this is a valid page
 				// because it is in the database.
-				$page = $wikiPageFactory->newFromRow( $row, WikiPage::READ_LATEST );
+				$page = WikiPage::newFromRow( $row, WikiPage::READ_LATEST );
 
 				// null pages still get attached to keep the counts the same. They will be filtered
 				// later on.
@@ -669,7 +664,7 @@ class ForceSearchIndex extends Maintenance {
 	 * @return int length
 	 */
 	private function getUpdatesInQueue() {
-		return MediaWikiServices::getInstance()->getJobQueueGroup()->get( 'cirrusSearchMassIndex' )->getSize();
+		return JobQueueGroup::singleton()->get( 'cirrusSearchMassIndex' )->getSize();
 	}
 
 	/**

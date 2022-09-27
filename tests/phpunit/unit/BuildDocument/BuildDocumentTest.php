@@ -6,7 +6,6 @@ use CirrusSearch\CirrusTestCaseTrait;
 use CirrusSearch\Connection;
 use CirrusSearch\SearchConfig;
 use Elastica\Document;
-use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Revision\RevisionStore;
 use ParserCache;
 use Title;
@@ -34,8 +33,7 @@ class BuildDocumentTest extends \MediaWikiUnitTestCase {
 			$this->createMock( IDatabase::class ),
 			$this->createMock( ParserCache::class ),
 			$revStore,
-			$this->createCirrusSearchHookRunner(),
-			$this->createMock( BacklinkCacheFactory::class )
+			$this->createCirrusSearchHookRunner()
 		) extends BuildDocument {
 			// Override create builders to avoid testing those implementations
 			protected function createBuilders( int $flags ): array {

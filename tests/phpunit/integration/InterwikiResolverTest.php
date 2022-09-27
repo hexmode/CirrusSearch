@@ -23,7 +23,6 @@ use Wikimedia\AtEase\AtEase;
  * @covers \CirrusSearch\EmptyInterwikiResolver
  */
 class InterwikiResolverTest extends CirrusIntegrationTestCase {
-	use MockHttpTrait;
 
 	public function testCirrusConfigInterwikiResolver() {
 		$resolver = $this->getCirrusConfigInterwikiResolver();

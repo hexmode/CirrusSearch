@@ -62,7 +62,7 @@ class ParserOutputPageProperties implements PagePropertyBuilder {
 	 * @throws BuildDocumentException
 	 */
 	public function finalize( Document $doc, Title $title ): void {
-		$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+		$page = WikiPage::factory( $title );
 		// TODO: If parserCache is null here then we will parse for every
 		// cluster and every retry.  Maybe instead of forcing a parse, we could
 		// force a parser cache update during self::initialize?

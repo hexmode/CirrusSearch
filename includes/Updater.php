@@ -3,6 +3,7 @@
 namespace CirrusSearch;
 
 use CirrusSearch\BuildDocument\BuildDocument;
+use JobQueueGroup;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\ProperPageIdentity;
@@ -108,7 +109,6 @@ class Updater extends ElasticsearchIntermediary {
 	public function traceRedirects( $title ) {
 		// Loop through redirects until we get to the ultimate target
 		$redirects = [];
-		$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
 		while ( true ) {
 			$titleText = $title->getFullText();
 			if ( in_array( $titleText, $this->updated ) ) {
@@ -125,7 +125,7 @@ class Updater extends ElasticsearchIntermediary {
 				return [ null, $redirects ];
 			}
 
-			$page = $wikiPageFactory->newFromTitle( $title );
+			$page = WikiPage::factory( $title );
 			if ( !$page->exists() ) {
 				$logger->debug( "Ignoring an update for a nonexistent page: $titleText" );
 				return [ null, $redirects ];
@@ -200,8 +200,7 @@ class Updater extends ElasticsearchIntermediary {
 			$services->getDBLoadBalancer()->getConnection( DB_REPLICA ),
 			$services->getParserCache(),
 			$services->getRevisionStore(),
-			new CirrusSearchHookRunner( $services->getHookContainer() ),
-			$services->getBacklinkCacheFactory()
+			new CirrusSearchHookRunner( $services->getHookContainer() )
 		);
 		foreach ( $builder->initialize( $pages, $flags ) as $document ) {
 			// This isn't really a property of the connection, so it doesn't matter
@@ -362,7 +361,6 @@ class Updater extends ElasticsearchIntermediary {
 	 */
 	public function updateLinkedArticles( $titles ) {
 		$pages = [];
-		$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
 		foreach ( $titles as $title ) {
 			// Special pages don't get updated, we only index
 			// actual existing pages.
@@ -370,7 +368,7 @@ class Updater extends ElasticsearchIntermediary {
 				continue;
 			}
 
-			$page = $wikiPageFactory->newFromTitle( $title );
+			$page = WikiPage::factory( $title );
 			if ( $page === null || !$page->exists() ) {
 				// Skip link to nonexistent page.
 				continue;
@@ -386,7 +384,7 @@ class Updater extends ElasticsearchIntermediary {
 					// Skip redirects to nonexistent pages
 					continue;
 				}
-				$page = $wikiPageFactory->newFromTitle( $target );
+				$page = WikiPage::factory( $target );
 			}
 			if ( $page->isRedirect() ) {
 				// This is a redirect to a redirect which doesn't count in the search score any way.
@@ -449,7 +447,7 @@ class Updater extends ElasticsearchIntermediary {
 		}
 
 		if ( $jobs ) {
-			MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
+			JobQueueGroup::singleton()->push( $jobs );
 		}
 	}
 

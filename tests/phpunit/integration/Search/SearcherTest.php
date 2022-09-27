@@ -19,7 +19,6 @@ use Title;
  * @group Standalone
  */
 class SearcherTest extends CirrusIntegrationTestCase {
-	use LinkCacheTestTrait;
 	use CirrusTestCaseTrait;
 
 	protected function setUp(): void {

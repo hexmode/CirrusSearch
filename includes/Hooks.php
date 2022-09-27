@@ -11,6 +11,7 @@ use ConfigFactory;
 use DeferredUpdates;
 use Html;
 use ISearchResultSet;
+use JobQueueGroup;
 use LinksUpdate;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
@@ -324,7 +325,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 		if ( $target ) {
 			// DeferredUpdate so we don't end up racing our own page deletion
 			DeferredUpdates::addCallableUpdate( static function () use ( $target ) {
-				MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+				JobQueueGroup::singleton()->push(
 					new Job\LinksUpdate( $target, [
 						'addedLinks' => [],
 						'removedLinks' => [],
@@ -344,7 +345,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 	public static function onArticleDeleteComplete( $page, $user, $reason, $pageId ) {
 		// Note that we must use the article id provided or it'll be lost in the ether.  The job can't
 		// load it from the title because the page row has already been deleted.
-		MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+		JobQueueGroup::singleton()->push(
 			new Job\DeletePages( $page->getTitle(), [
 				'docId' => self::getConfig()->makeId( $pageId )
 			] )
@@ -360,7 +361,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 	 * @param Title $title The page title we've had a revision deleted on
 	 */
 	public static function onRevisionDelete( $title ) {
-		MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+		JobQueueGroup::singleton()->push(
 			new Job\LinksUpdate( $title, [
 				'addedLinks' => [],
 				'removedLinks' => [],
@@ -450,7 +451,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 		$params += Job\LinksUpdate::buildJobDelayOptions( Job\LinksUpdate::class, $delay );
 		$job = new Job\LinksUpdate( $linksUpdate->getTitle(), $params );
 
-		MediaWikiServices::getInstance()->getJobQueueGroup()->lazyPush( $job );
+		JobQueueGroup::singleton()->lazyPush( $job );
 	}
 
 	/**
@@ -461,7 +462,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 	 */
 	public static function onUploadComplete( \UploadBase $uploadBase ) {
 		if ( $uploadBase->getTitle()->exists() ) {
-			MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+			JobQueueGroup::singleton()->push(
 				new Job\LinksUpdate( $uploadBase->getTitle(), [
 					'addedLinks' => [],
 					'removedLinks' => [],
@@ -611,7 +612,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 			] );
 			// Push the job after DB commit but cancel on rollback
 			wfGetDB( DB_PRIMARY )->onTransactionCommitOrIdle( static function () use ( $job ) {
-				MediaWikiServices::getInstance()->getJobQueueGroup()->lazyPush( $job );
+				JobQueueGroup::singleton()->lazyPush( $job );
 			}, __METHOD__ );
 		}
 	}
@@ -896,7 +897,7 @@ class Hooks implements UserGetDefaultOptionsHook, GetPreferencesHook {
 			// Not indexing, thus nothing to remove here.
 			return;
 		}
-		MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+		JobQueueGroup::singleton()->push(
 			new Job\DeleteArchive( $title, [ 'docIds' => $restoredPages ] )
 		);
 	}

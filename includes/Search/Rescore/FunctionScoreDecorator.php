@@ -18,10 +18,10 @@ class FunctionScoreDecorator extends FunctionScore {
 	private $size = 0;
 
 	public function addFunction(
-		string $functionType,
+		$functionType,
 		$functionParams,
 		?AbstractQuery $filter = null,
-		?float $weight = null
+		$weight = null
 	): FunctionScore {
 		$this->size ++;
 

@@ -45,7 +45,7 @@ class OtherIndex extends CirrusGenericJob {
 		if ( $titlesToUpdate ) {
 			// Note that we're updating a bunch of titles but we have to pick one to
 			// attach to the job so we pick the first one.
-			MediaWikiServices::getInstance()->getJobQueueGroup()->push(
+			JobQueueGroup::singleton()->push(
 				new self( [
 					'titles' => $titlesToUpdate,
 					'cluster' => $cluster,

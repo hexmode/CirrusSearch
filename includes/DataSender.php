@@ -242,8 +242,7 @@ class DataSender extends ElasticsearchIntermediary {
 			$services->getDBLoadBalancer()->getConnection( DB_REPLICA ),
 			$services->getParserCache(),
 			$services->getRevisionStore(),
-			new CirrusSearchHookRunner( $services->getHookContainer() ),
-			$services->getBacklinkCacheFactory()
+			new CirrusSearchHookRunner( $services->getHookContainer() )
 		);
 		try {
 			foreach ( $documents as $i => $doc ) {
@@ -547,7 +546,7 @@ class DataSender extends ElasticsearchIntermediary {
 	 * @return string The set action to be performed. Either 'add' or 'remove'
 	 */
 	protected function decideRequiredSetAction( Title $title ) {
-		$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+		$page = WikiPage::factory( $title );
 		$page->loadPageData( WikiPage::READ_LATEST );
 		if ( $page->exists() ) {
 			return 'add';

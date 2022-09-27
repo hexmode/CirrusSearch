@@ -3,6 +3,7 @@
 namespace CirrusSearch\Job;
 
 use CirrusSearch\Updater;
+use JobQueueGroup;
 use MediaWiki\MediaWikiServices;
 use Title;
 
@@ -75,7 +76,7 @@ class LinksUpdate extends CirrusTitleJob {
 				'cluster' => $this->params['cluster'],
 			] + self::buildJobDelayOptions( IncomingLinkCount::class, $delay ) );
 		}
-		MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
+		JobQueueGroup::singleton()->push( $jobs );
 
 		// All done
 		return $res;

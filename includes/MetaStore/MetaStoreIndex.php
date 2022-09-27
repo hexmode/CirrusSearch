@@ -8,6 +8,7 @@ use CirrusSearch\Maintenance\AnalysisFilter;
 use CirrusSearch\Maintenance\ConfigUtils;
 use CirrusSearch\Maintenance\Printer;
 use CirrusSearch\SearchConfig;
+use Elastica\Exception\ResponseException;
 
 /**
  * This program is free software; you can redistribute it and/or modify
@@ -192,15 +193,20 @@ class MetaStoreIndex {
 		// @todo utilize $this->getIndex()->create(...) once it supports setting
 		// the master_timeout parameter.
 		$index = $this->client->getIndex( $name );
-		$index->request(
-			'',
-			\Elastica\Request::PUT,
-			$this->buildIndexConfiguration(),
-			[
-				'master_timeout' => $this->getMasterTimeout(),
-				'include_type_name' => 'false'
-			]
-		);
+
+		try {
+			$index->request(
+				'',
+				\Elastica\Request::PUT,
+				$this->buildIndexConfiguration(),
+				[
+					'master_timeout' => $this->getMasterTimeout(),
+					'include_type_name' => 'false'
+				]
+			);
+		} catch ( ResponseException $e ) {
+			$this->log( "Index already exists.\n" );
+		}
 		$this->log( " ok\n" );
 		$this->configUtils->waitForGreen( $index->getName(), 3600 );
 		$this->storeMetastoreVersion( $index );

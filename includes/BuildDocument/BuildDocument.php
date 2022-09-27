@@ -7,7 +7,6 @@ use CirrusSearch\Connection;
 use CirrusSearch\Search\CirrusIndexField;
 use CirrusSearch\SearchConfig;
 use Elastica\Document;
-use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionStore;
@@ -72,8 +71,6 @@ class BuildDocument {
 	private $revStore;
 	/** @var CirrusSearchHookRunner */
 	private $cirrusSearchHookRunner;
-	/** @var BacklinkCacheFactory */
-	private $backlinkCacheFactory;
 
 	/**
 	 * @param Connection $connection Cirrus connection to read page properties from
@@ -81,15 +78,13 @@ class BuildDocument {
 	 * @param ParserCache $parserCache Cache to read parser output from
 	 * @param RevisionStore $revStore Store for retrieving revisions by id
 	 * @param CirrusSearchHookRunner $cirrusSearchHookRunner
-	 * @param BacklinkCacheFactory $backlinkCacheFactory
 	 */
 	public function __construct(
 		Connection $connection,
 		IDatabase $db,
 		ParserCache $parserCache,
 		RevisionStore $revStore,
-		CirrusSearchHookRunner $cirrusSearchHookRunner,
-		BacklinkCacheFactory $backlinkCacheFactory
+		CirrusSearchHookRunner $cirrusSearchHookRunner
 	) {
 		$this->config = $connection->getConfig();
 		$this->connection = $connection;
@@ -97,7 +92,6 @@ class BuildDocument {
 		$this->parserCache = $parserCache;
 		$this->revStore = $revStore;
 		$this->cirrusSearchHookRunner = $cirrusSearchHookRunner;
-		$this->backlinkCacheFactory = $backlinkCacheFactory;
 	}
 
 	/**
@@ -192,7 +186,7 @@ class BuildDocument {
 			$builders[] = new ParserOutputPageProperties( $this->parserCache, (bool)$forceParse, $this->config );
 		}
 		if ( !$skipLinks ) {
-			$builders[] = new RedirectsAndIncomingLinks( $this->connection, $this->backlinkCacheFactory );
+			$builders[] = new RedirectsAndIncomingLinks( $this->connection );
 		}
 		return $builders;
 	}
